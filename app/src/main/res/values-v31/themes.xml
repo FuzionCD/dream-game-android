@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Android 12+ forces a system splash on cold-start. make it a plain
+         black screen (matching windowBackground) with the icon suppressed, so
+         it hands off seamlessly to the in-engine logo instead of flashing the
+         masked launcher icon. -->
+    <style name="Theme.Dream.Main" parent="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+        <item name="android:windowBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+    </style>
+
+</resources>

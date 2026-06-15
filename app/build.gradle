@@ -1,0 +1,57 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.fireflame.dream'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.fireflame.dream"
+        minSdk 21
+        targetSdk 35
+        versionCode 1
+        versionName "1.0.0"
+
+        ndk {
+            // arm64 only — the iOS Dream binary is arm64, and our byte-exact
+            // class layouts assume 8-byte pointers (vtable, void*, int64_t).
+            // Building for armeabi-v7a (32-bit ARM) would break every
+            // sizeof()/offsetof() static_assert in the port.
+            abiFilters 'arm64-v8a'
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/jni/CMakeLists.txt"
+            // uses whichever cmake version the sdk has installed
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+        debug {
+            debuggable true
+            jniDebuggable true
+        }
+    }
+
+    sourceSets {
+        main {
+            // sdl2 provides its own java sources, point to them
+            java.srcDirs = [
+                'src/main/java',
+                'src/main/jni/SDL2/android-project/app/src/main/java'
+            ]
+        }
+    }
+    ndkVersion '30.0.14904198 rc1'
+    buildToolsVersion '34.0.0'
+}

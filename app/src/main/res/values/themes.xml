@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- the game's theme. fullscreen, no title bar, solid black window
+         background. on Android 11 and below the black windowBackground IS the
+         cold-start splash (covers process/GL/asset load with no white flash);
+         on 12+ the mandatory system splash covers it (see values-v31). the
+         full logo is then drawn in-engine (main.cpp) right after load. -->
+    <style name="Theme.Dream.Main" parent="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+
+</resources>

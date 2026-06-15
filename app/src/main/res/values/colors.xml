@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- splash background. the original iOS app used pure black; swap to the
+         icon's magenta if preferred. -->
+    <color name="splash_background">#000000</color>
+
+    <!-- adaptive-icon background (behind the transparent foreground art). -->
+    <color name="ic_launcher_background">#712485</color>
+</resources>
