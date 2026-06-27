@@ -36,43 +36,37 @@
 //   +0x1208  lineHeight    (size divisor, sscanf'd from "common lineHeight=...")
 //   +0x120C  base          (baseline subtractor, from same "common ..." line)
 //
-// per-char entry layout. char `c`'s 9 floats are written at byte offsets
-// (8 + 36c)..(43 + 36c). the binary parser uses the index formula
-// `param_1[c*9 + 2 .. c*9 + 10]` (where param_1 is `int*`/`float*`), which
-// translates to a 36-byte stride starting at byte 8.
-//
-// fields within char c's slot, byte offsets relative to (entryBytes + 36c):
-//   +0x00  uvU              = x / scaleW
-//   +0x04  uvV              = y / scaleH
-//   +0x08  uvU2             = uvU + width / scaleW
-//   +0x0C  uvV2             = uvV + height / scaleH
-//   +0x10  sizeW            = width / lineHeight
-//   +0x14  sizeH            = height / lineHeight
-//   +0x18  xoffsetHalved    = (xoffset / lineHeight) * 0.5
-//   +0x1C  yoffsetCenter    = (yoffset / lineHeight) + (sizeH * 0.5)
-//                                                    - (base / lineHeight)
-//   +0x20  xadvanceHalved   = (xadvance / lineHeight) * 0.5
-//
-// important: TextItem reads with an 8-byte shift. instead of indexing the
-// per-char slot directly (entryBytes + 36c), TextItem accesses a glyph at
-// `entryPtr = (uint8_t*)bmfontTable + c*0x24` and reads at offsets
-// +0x08, +0x0C, +0x10, +0x14, +0x18, +0x1C, +0x20, +0x24, +0x28. that's
-// 8 bytes ahead of the 36-byte stride, so the last two reads (+0x24, +0x28)
-// land in entry[c+1]'s first 8 bytes. this is the binary's exact read
-// pattern and we preserve it byte-for-byte rather than re-shifting on our
-// side. for c=127, the +0x24 / +0x28 reads land in `lineHeight` / `base`;
-// DEL is rarely rendered, so the side effect is benign.
+// per-char glyph entry: 9 floats (36 bytes). the parser writes entries[c] and
+// TextItem reads it back via entries[(signed char)c]. fields are pre-divided by
+// lineHeight / scaleW / scaleH so the reader does no extra math.
+struct BMFontEntry {
+    float uvU, uvV;          // +0x00, +0x04  atlas top-left UV   (x/scaleW, y/scaleH)
+    float uvU2, uvV2;        // +0x08, +0x0C  atlas bottom-right UV
+    float sizeW, sizeH;      // +0x10, +0x14  display size        (w/lineHeight, h/lineHeight)
+    float xoffsetHalved;     // +0x18         (xoffset / lineHeight) * 0.5
+    float yoffsetCenter;     // +0x1C         yoffset/lineHeight + sizeH*0.5 - base/lineHeight
+    float xadvanceHalved;    // +0x20         (xadvance / lineHeight) * 0.5
+};
+
+static_assert(sizeof(BMFontEntry) == 36, "BMFontEntry must be 9 floats (36 bytes).");
+
+// the binary sign-extends the char before indexing (entries[(signed char)c]),
+// so bytes >= 0x80 index BEFORE the array. that's a benign edge case (DEL and
+// high bytes are rarely rendered); we keep the signed index so the access stays
+// byte-for-byte identical to the binary's `tableBase + (signed char)c*0x24`.
 struct BMFontTable {
-    int     textureIndex;          // +0x0000
-    float   perTableMul;           // +0x0004
-    uint8_t entryBytes[128 * 36];  // +0x0008..+0x1208 (4608 bytes)
-    int     lineHeight;            // +0x1208
-    int     base;                  // +0x120C
+    int         textureIndex;   // +0x0000
+    float       perTableMul;    // +0x0004
+    BMFontEntry entries[128];   // +0x0008..+0x1208 (128 * 36 = 4608 bytes)
+    int         lineHeight;     // +0x1208
+    int         base;           // +0x120C
 };
 
 static_assert(sizeof(BMFontTable) == 0x1210,
               "BMFontTable must be exactly 0x1210 bytes "
               "(matches FUN_1000461b4's stride: param_1 + idx*0x1210 + 0x10)");
+static_assert(offsetof(BMFontTable, entries) == 0x0008,
+              "entries must start at the binary's +0x0008 offset");
 static_assert(offsetof(BMFontTable, lineHeight) == 0x1208,
               "lineHeight must land at the binary's +0x1208 footer offset");
 static_assert(offsetof(BMFontTable, base) == 0x120C,

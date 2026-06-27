@@ -9,8 +9,6 @@
 #include <GLES/gl.h>
 #include <cmath>
 
-// constants extracted from binary (Dream_1.0.3, arm64 slice). verified via
-// scripts/extract_phase3_data.py.
 static constexpr float kInitLineStrideMul     = 0.078125f;   // DAT_10005a260
 static constexpr float kInitTrack1RateMult    = 0.06f;       // DAT_10005a264
 static constexpr float kInitTrack2RateMult    = 0.02f;       // DAT_10005a268
@@ -104,7 +102,7 @@ void AnimationController::initFromLines(
 
         if (children.size() <= static_cast<size_t>(childCount)) {
             auto* item = new TextItem();
-            item->init(reinterpret_cast<int*>(worldFont));
+            item->init(worldFont);
             children.push_back(item);
         }
 
@@ -329,7 +327,7 @@ void AnimationController::update(float dt) {
 
         forEachVisibleGlyph(
             [this, clampedEased, timerLeadingEdge, visibleGlyphsF]
-            (size_t visibleIdx, Quad& glyphQuad) {
+            (size_t visibleIdx, size_t globalIdx, Quad& glyphQuad) {
 
                 if (visibleIdx >= perGlyphData.size()) {
                     return;
@@ -346,13 +344,15 @@ void AnimationController::update(float dt) {
                 const float alphaFade =
                     0.5f - std::cos((1.0f - uPerGlyph) * kBlendCosPi) * 0.5f;
 
-                // color: blend snapshot -> glyphColors[visibleIdx]. at fade
-                // end alpha is 0 anyway so the color choice is moot.
-                if (visibleIdx < glyphColors.size()) {
+                // color: blend snapshot -> glyphColors[globalIdx]. binary
+                // indexes glyphColors by the global glyph index (x24, counts
+                // spaces), not the visible index. at fade end alpha is 0
+                // anyway so the color choice is moot.
+                if (globalIdx < glyphColors.size()) {
                     const uint32_t blended = blendRgba(
                         clampedEased,
                         snap.rgbaSnapshot,
-                        glyphColors[visibleIdx],
+                        glyphColors[globalIdx],
                         false, false);
                     glyphQuad.vertices[0].color = blended;
                     glyphQuad.vertices[1].color = blended;
@@ -481,8 +481,11 @@ void AnimationController::reset() {
 }
 
 void AnimationController::forEachVisibleGlyph(
-        const std::function<void(size_t, Quad&)>& fn) {
+        const std::function<void(size_t, size_t, Quad&)>& fn) {
+    // visibleIdx (binary x23) counts non-space glyphs; globalIdx (binary x24)
+    // counts every glyph slot incl. spaces. both accumulate across children.
     size_t visibleIdx = 0;
+    size_t globalIdx  = 0;
 
     for (int64_t lineIdx = 0;
          lineIdx < childCount && lineIdx < (int64_t)children.size();
@@ -499,11 +502,13 @@ void AnimationController::forEachVisibleGlyph(
                             : ' ';
 
             if (ch == ' ') {
+                globalIdx++;
                 continue;
             }
 
-            fn(visibleIdx, child->glyphVec[(size_t)g].quad);
+            fn(visibleIdx, globalIdx, child->glyphVec[(size_t)g].quad);
             visibleIdx++;
+            globalIdx++;
         }
     }
 }
@@ -529,7 +534,7 @@ void AnimationController::startFadeOut() {
 
     perGlyphData.clear();
 
-    forEachVisibleGlyph([this](size_t /*visibleIdx*/, Quad& glyphQuad) {
+    forEachVisibleGlyph([this](size_t /*visibleIdx*/, size_t /*globalIdx*/, Quad& glyphQuad) {
         perGlyphData.push_back({
             glyphQuad.vertices[0].color,
             glyphQuad.scaleX,

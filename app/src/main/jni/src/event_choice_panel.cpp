@@ -43,7 +43,7 @@ void EventChoicePanel::init(DetailPanel* heldItemRefIn) {
     heldItemRef = heldItemRefIn;
 
     Game* g = getGame();
-    int*  panelGlyphs = g ? g->bmfontTablePtr(0) : nullptr;
+    const BMFontTable* panelGlyphs = g ? g->bmfontTablePtr(0) : nullptr;
 
     // 9-slice atlas table: 3 strips per Label, default and selected variants.
     static constexpr float L0_UV_ORIGIN[3][2] = {
@@ -196,16 +196,73 @@ void EventChoicePanel::update(float dt, float touchInput) {
             EventChoiceSlot& slot = slots[i];
 
             // EventSlot icon tap -> detail-panel popup. binary calls
-            // FUN_100040124 (text + atlas-icon detail populator) with the
-            // event's name, 2 desc lines, and a key-dependent atlas-icon
-            // slot. not ported yet; we observe the touch but show no
-            // card. wire up once FUN_100040124 lands.
+            // FUN_100040124 (populateForStatRow) with a key-dependent
+            // category name + one charge-rule line. the contentType id and
+            // string pair are chosen straight off the eventTypeKey jump
+            // table at 0x10000e918 (raw key 0..4); note the binary's key 1
+            // arm carries the Control card and key 4 the Health card, the
+            // inverse of the EventKey enum naming, so we dispatch by raw key.
             //
             // do not early-return here. the binary falls through to the
             // labelDefault hit test so an icon tap also selects the slot
             // (the icon sits inside the chrome frame, so the same touch
             // hits both bboxes and both actions fire).
-            (void)(slot.slotPtr && slot.slotPtr->contains(touchLocalX, touchLocalY));
+            if (slot.slotPtr && slot.slotPtr->contains(touchLocalX, touchLocalY)) {
+
+                constexpr float CARD_HEADER_Y = 0.0984375f;   // DAT_100059d68
+                constexpr char  ACTIVATE_HINT[] =
+                    "Can be activated when all charges are filled.";
+
+                uint32_t contentType = 0;
+                const char* cardName = nullptr;
+                const char* chargeRule = nullptr;
+
+                switch (slot.slotPtr->getEventTypeKey()) {
+                    case 0:   // jump arm 0x10000e91c
+                        contentType = 4;
+                        cardName    = "Experience Event";
+                        chargeRule  = "Gains 1 charge each time you defeat a Snag.";
+                        break;
+
+                    case 1:   // jump arm 0x10000e958
+                        contentType = 5;
+                        cardName    = "Control Event";
+                        chargeRule  = "Gains 1 charge when you place {C} tile on {C} spot.";
+                        break;
+
+                    case 2:   // jump arm 0x10000e994
+                        contentType = 2;
+                        cardName    = "Attack Event";
+                        chargeRule  = "Gains 1 charge each time you place a {A} tile.";
+                        break;
+
+                    case 3:   // jump arm 0x10000e9d0
+                        contentType = 3;
+                        cardName    = "Defence Event";
+                        chargeRule  = "Gains 1 charge each time you place a {D} tile.";
+                        break;
+
+                    case 4:   // jump arm 0x10000ea0c
+                        contentType = 6;
+                        cardName    = "Health Event";
+                        chargeRule  = "Gains 1 charge when you gain {H} from a {H} tile.";
+                        break;
+
+                    default:
+                        cardName = nullptr;
+                        break;
+                }
+
+                if (cardName) {
+                    float cardAnchor[2] = {
+                        slot.slotPtr->mainQuad.quad.posX + anchorX,
+                        slot.slotPtr->mainQuad.quad.posY + anchorY,
+                    };
+                    heldItemRef->populateForStatRow(CARD_HEADER_Y, cardAnchor,
+                                                    contentType, cardName,
+                                                    chargeRule, ACTIVATE_HINT, "");
+                }
+            }
 
             // chrome label tap -> select this slot.
             if (slot.labelDefault.contains(touchLocalX, touchLocalY)) {
@@ -336,6 +393,7 @@ void rollCandidates(EventChoicePanel& panel,
 
             if (static_cast<int>(EVENT_TABLE[kind].key) != key) continue;
             if (excludedKinds.count(kind))                    continue;
+            if (kind == 80)                                   continue;   // "Exhaustion" never a candidate; cmp w26,#0x50/b.eq at 0x10000f518
 
             kindsForKey.insert(kind);
         }
@@ -374,6 +432,7 @@ void EventChoicePanel::open(PlayerSystem& ps,
 
     heldItemRef->reset(0);
     selectedSlot = -1;
+    selectedEventOnConfirm = nullptr;   // str xzr,[x19,#0x14e8] at 0x10000ecc0
 
     // Perceptive (perkType 0x13) grants a 4th candidate.
     slotCount = (ps.perkLevel(0x13) > 0) ? 4 : 3;

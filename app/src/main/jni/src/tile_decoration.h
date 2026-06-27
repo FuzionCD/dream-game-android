@@ -11,14 +11,13 @@
 //   draw (per-tile pass): inlined inside FUN_100012278
 //   dtor:                 FUN_100007df0 (a no-op in the binary)
 //
-// 0x140-byte node added to TileObject's decoration list at TileObject+0x228.
-// each tile holds zero or more decorations stacked in front of the hex face,
-// each rendering a small overlay icon (and, for kind=2 specifically, a
-// numeric value rendered as digits via the embedded ColorTint).
+// the decoration value stored in TileObject's std::list<DecorationValue> at
+// TileObject+0x228. each tile holds zero or more decorations stacked in front
+// of the hex face, each rendering a small overlay icon (and, for kind=2
+// specifically, a numeric value rendered as digits via the embedded ColorTint).
 //
-// the decoration list is sentinel-style and sorted by `kind` ascending:
-// FUN_100013870 walks until it finds a node with kind >= argument, inserts
-// before it, and updates the tile's stored count.
+// the list is sorted by `kind` ascending: pushDecoration walks until it finds a
+// node with kind >= argument and inserts before it.
 //
 // kind values observed in the binary:
 //   0  generic indicator. UV depends on whether the tile's snagContent is
@@ -44,61 +43,51 @@
 //        (0.2, 0.109375). pos offset (0, -0.09375). stores `value` at +0xF8,
 //        renders it as digits via the embedded ColorTint. plays sound 0x3D.
 
-struct TileDecoration {
-    // intrusive doubly-linked list: prev at +0, next at +8. matches the
-    // libc++ std::list node header (prev/next pointers), but the rest of
-    // the body is 0x130 bytes of decoration-specific state, too large
-    // for the std::list value-stored idiom we use elsewhere. the list
-    // is therefore walked by hand via prev/next instead of being typed
-    // as std::list<TileDecoration>.
-    // confirmed by FUN_1000124ac's walk (`plVar5 = (long *)plVar5[1]`
-    // advances forward via byte 8) and FUN_1000140b8's insertion writes.
-    TileDecoration* prev;             // +0x000  (= sentinel.prev when self)
-    TileDecoration* next;             // +0x008  (forward iteration pointer)
-    int             kind;             // +0x010
-    uint8_t         pad014[4];        // +0x014
+// the binary's decoration list is a libc++ std::list whose node header
+// (prev/next) is the first 0x10 bytes of each 0x140-byte node; the remaining
+// 0x130 bytes are this value. TileObject holds it as std::list<DecorationValue>
+// (head at TileObject+0x228), so the prev/next links live in the std::list node
+// rather than here. offsets below are relative to the value start (= node+0x10).
+struct DecorationValue {
+    int             kind;             // +0x000
+    uint8_t         pad004[4];        // +0x004
 
-    // sub-icon Quad. its posX/posY at +0x0C0/+0x0C4 (Quad+0xA8 inside the
-    // node) get mirrored from the parent tile's mainQuad position by
-    // TileObject::setPosition.
-    Quad            iconSubQuad;      // +0x018..+0x0EF (0xD8; owns anim rect at +0xE0)
+    // sub-icon Quad. its posX/posY get mirrored from the parent tile's
+    // mainQuad position by TileObject::setPosition.
+    Quad            iconSubQuad;      // +0x008..+0x0DF (0xD8; owns anim rect at +0xD0)
 
     // alpha-fade animation timer (0..1). advances at rate 2/sec while the
     // decoration is on-screen. when suppressed flips on, the timer (which
-    // is currently at 1.0) gets re-seeded by FUN_100013870 to start the
-    // fade-out ramp. consumed by TileObject::update's decoration walk
-    // (port of FUN_1000124ac's plVar5 + 0x1e read).
-    float           alphaT;           // +0x0F0
-    bool            suppressed;       // +0x0F4  content-hide gate. when 0
+    // is currently at 1.0) gets re-seeded by pushDecoration to start the
+    // fade-out ramp. consumed by TileObject::update's decoration walk.
+    float           alphaT;           // +0x0E0
+    bool            suppressed;       // +0x0E4  content-hide gate. when 0
                                       //   (not suppressed), the decoration is
                                       //   actively hiding: for kind=1
                                       //   (Darkness ?) the underlying
                                       //   TileContent / SnagContent sprite is
-                                      //   not drawn (FUN_1000123c4 returns
-                                      //   early). flip to 1 (effect suppressed)
-                                      //   via FUN_100013bfc to reveal the
-                                      //   content again with the alphaT
-                                      //   fade-in. rack-flip-tile orientation
-                                      //   lives on a separate field
-                                      //   (flipRackTiles), not here.
-    uint8_t         pad0F5[3];        // +0x0F5
-    int             value;            // +0x0F8  (kind=2 only; the displayed
+                                      //   not drawn. flip to 1 (effect
+                                      //   suppressed) to reveal the content
+                                      //   again with the alphaT fade-in. rack-
+                                      //   flip-tile orientation lives on a
+                                      //   separate field (flipRackTiles).
+    uint8_t         pad0E5[3];        // +0x0E5
+    int             value;            // +0x0E8  (kind=2 only; the displayed
                                       //          numeric value)
-    uint8_t         pad0FC[4];        // +0x0FC
+    uint8_t         pad0EC[4];        // +0x0EC
 
-    // ColorTint at +0x100. used only for kind=2 decorations (the tint renders
-    // the numeric value as small digit Quads). for kind=0 / kind=1 the tint
-    // exists in memory but is never rendered.
-    ColorTint       colorTint;        // +0x100..+0x137  (0x38 bytes)
+    // ColorTint. used only for kind=2 decorations (the tint renders the numeric
+    // value as small digit Quads). for kind=0 / kind=1 it's never rendered.
+    ColorTint       colorTint;        // +0x0F0..+0x127  (0x38 bytes)
 
     // sub-position offset for the icon relative to the tile center. differs
     // per kind: kind=0 -> (0, 0); kind=1 -> (0.00625, 0.0078125); kind=2 ->
     // (0, -0.09375). read by TileObject::setPosition when propagating the
     // tile's pos into the iconSubQuad.
-    float           subOffsetX;       // +0x138
-    float           subOffsetY;       // +0x13C
+    float           subOffsetX;       // +0x128
+    float           subOffsetY;       // +0x12C
 };
 
-static_assert(sizeof(TileDecoration) == 0x140,
-              "TileDecoration must be exactly 0x140 bytes (binary uses "
-              "operator_new(0x140) in FUN_1000140b8)");
+static_assert(sizeof(DecorationValue) == 0x130,
+              "DecorationValue must be 0x130 bytes (the std::list node value; "
+              "node = 0x10 prev/next header + 0x130 value = 0x140)");

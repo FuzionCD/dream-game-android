@@ -155,10 +155,13 @@ public:
 
 private:
     // shared walk used by startFadeOut (snapshot) and the track 2 body
-    // (apply fade). visits every non-space glyph in textual order,
-    // passing its 0-based visible index + a mutable Quad reference.
+    // (apply fade). visits every non-space glyph in textual order, passing
+    // its 0-based visible index (non-space count, binary x23), its 0-based
+    // global glyph index (counts spaces, binary x24), and a mutable Quad
+    // reference. track 2 indexes perGlyphData by the visible index but
+    // glyphColors by the global index.
     void forEachVisibleGlyph(
-            const std::function<void(size_t, Quad&)>& fn);
+            const std::function<void(size_t, size_t, Quad&)>& fn);
 
 public:
     // per-glyph snapshot used by the track 2 fade-out body. populated

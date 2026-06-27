@@ -107,6 +107,9 @@ void Overlay::start(float height) {
     targetY = height;
     opening = true;
     progress = 0.0f;
+
+    // play the curtain-close sound (slot 4), tail-called inside the binary.
+    getGame()->soundQueue.trigger(4);
 }
 
 // FUN_100010740.

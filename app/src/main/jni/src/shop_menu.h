@@ -64,16 +64,17 @@ static_assert(sizeof(ShopKeyIcon) == 0xF0,
               "allocation the binary uses.");
 
 // reconstructed from Ghidra:
-//   init (ctor + chrome):    FUN_1000502d4   (F7-B.5)
+//   init (ctor + chrome):    FUN_1000502d4
 //   seedPools:               FUN_100051a14   (helper, called by init + restore)
 //   addKeys:                 FUN_100054254
-//   open:                    FUN_100052058   (F7-B)
-//   update:                  FUN_1000525f4   (F7-D)
-//   recomputeRowAvailability:FUN_100052478   (helper, F7-D)
-//   formatUnlockedCounts:    FUN_10005250c   (helper, F7-B)
+//   open:                    FUN_100052058
+//   draw:                    FUN_100053a70
+//   update:                  FUN_1000525f4
+//   recomputeRowAvailability:FUN_100052478   (helper)
+//   formatUnlockedCounts:    FUN_10005250c   (helper)
 //   setRowState:             FUN_100053f1c   (helper, 3 visual states)
 //   dirtyXfer:               FUN_100054298   (push shop state to save buffer)
-//   restoreFromSave:         FUN_100054338   (F-save state restore)
+//   restoreFromSave:         FUN_100054338   (save-state restore)
 //
 // Shop is the between-runs UI at Game+0x19130. holds the persistent key
 // balance, three unlock rows (Face / Snag / Event), and the pools of
@@ -192,10 +193,10 @@ public:
     void open();
 
     // FUN_100053a70. renders the shop chrome + 3 rows + key icons. drawn
-    // from Game::draw between World and TitleMenu when visible. unlock-
-    // anim branches (shakeActive / unlockAnimActive) defer to F7-D; for
-    // the basic browse view, none of those flags are set so the
-    // animated-reveal Quads stay unrendered.
+    // from Game::draw between World and TitleMenu when visible. includes the
+    // unlock-anim branches (shakeActive / unlockAnimActive); in the basic
+    // browse view those flags are clear so the animated-reveal Quads stay
+    // unrendered.
     void draw();
 
     // FUN_1000525f4. per-frame tick. drives the key-icon decay list, the
@@ -253,7 +254,7 @@ public:
     Label    headerLabel;                       // +0x0008..+0x009F
 
     // 7 chrome Quads. positions / UVs assigned by Shop::init's tail
-    // block; tentative roles (confirm in F7-C draw port):
+    // block; roles:
     //   chromeQuad0  upper "Shop" badge; its posX (set to 0.84375) is
     //                the reference X for the floating key-icon row in
     //                Shop::open. tracked separately for clarity.
@@ -310,8 +311,8 @@ public:
     int32_t  committedRow;                      // +0x333C..+0x333F
     int32_t  keysToConsume;                     // +0x3340..+0x3343
 
-    // 5 anim timers (key decay, reveal pulse, shake, etc.). per-stage
-    // semantics to type as the per-stage names land in F7-D.
+    // 5 anim timers (key decay, reveal pulse, shake, etc.) driven by the
+    // unlock-reveal sequence in update().
     float    animTimers[5];                     // +0x3344..+0x3357
 
     // path-interpolation state: std::vector of (x, y) pairs stored flat
@@ -367,9 +368,8 @@ public:
     float    overlayOffsetX;                    // +0x3518..+0x351B
     float    overlayOffsetY;                    // +0x351C..+0x351F
 
-    // 5 trailing animation Quads (highlight overlays / spark effects).
-    // typed as Quad so byte layout stays exact; per-quad purpose to
-    // resolve as the draw + reveal ticks get ported in F7-C/D.
+    // 5 trailing animation Quads (highlight overlays / spark effects),
+    // driven by the unlock-reveal animation in draw() / update().
     Quad     animQuads[5];                      // +0x3520..+0x3957
 
     // 3 pool sets, remaining-to-unlock IDs for each row. std::set so

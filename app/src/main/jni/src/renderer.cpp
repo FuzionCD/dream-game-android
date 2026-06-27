@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "quad.h"
+#include "game.h"
 #include <GLES/gl.h>
 #include <SDL.h>
 
@@ -54,24 +55,21 @@ void Renderer::init(int screenW, int screenH, void* gameData) {
 
         // set up letterbox bar quads in the game struct if available
         if (gameData) {
-            uint8_t* gd = (uint8_t*)gameData;
+            Game* game = (Game*)gameData;
 
-            // game+0x36C8 = scaleFactor
-            *(float*)(gd + 0x36C8) = sScaleFactor;
+            game->scaleFactor() = sScaleFactor;
 
-            // letterbox quad 1 at game+0x36D0
-            Quad* bar1 = (Quad*)(gd + 0x36D0);
-            bar1->setColor(0, 0, 0, 255);
-            bar1->setSize(sScaleFactor, sVirtualHeight);
-            bar1->posX = -sScaleFactor * 0.5f;
-            bar1->posY = sVirtualHeight * 0.5f;
+            Quad& bar1 = game->letterboxQuad1();
+            bar1.setColor(0, 0, 0, 255);
+            bar1.setSize(sScaleFactor, sVirtualHeight);
+            bar1.posX = -sScaleFactor * 0.5f;
+            bar1.posY = sVirtualHeight * 0.5f;
 
-            // letterbox quad 2 at game+0x37A8
-            Quad* bar2 = (Quad*)(gd + 0x37A8);
-            bar2->setColor(0, 0, 0, 255);
-            bar2->setSize(sScaleFactor, sVirtualHeight);
-            bar2->posX = sScaleFactor * 0.5f + 1.0f;
-            bar2->posY = sVirtualHeight * 0.5f;
+            Quad& bar2 = game->letterboxQuad2();
+            bar2.setColor(0, 0, 0, 255);
+            bar2.setSize(sScaleFactor, sVirtualHeight);
+            bar2.posX = sScaleFactor * 0.5f + 1.0f;
+            bar2.posY = sVirtualHeight * 0.5f;
         }
 
         orthoLeft = -sScaleFactor;

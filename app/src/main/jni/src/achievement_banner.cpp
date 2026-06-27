@@ -204,9 +204,9 @@ static void bannerAddLabelGlyphs(AchievementBanner* b, int textureId,
 }
 
 // FUN_1000501a0, append every glyph of `src` TextItem, transformed by
-// (src.posX/Y, src.scaleX/Y), with texId = glyphTablePtr[0] + 1.
+// (src.posX/Y, src.scaleX/Y), with texId = glyphTablePtr->textureIndex + 1.
 static void bannerAddTextItemGlyphs(AchievementBanner* b, TextItem& src) {
-    int textureId = src.glyphTablePtr[0] + 1;
+    int textureId = src.glyphTablePtr->textureIndex + 1;
 
     for (int64_t i = 0; i < src.glyphCount; ++i) {
         bannerAddQuadGlyph(b, textureId, src.glyphVec[i].quad,

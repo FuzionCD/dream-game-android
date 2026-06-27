@@ -194,7 +194,7 @@ void UserStatsPanel::init(DetailPanel* detailPanelPtr) {
 
     // FUN_10002fa50, TextItem init with the panel-font glyph table (game+0x10).
     Game* g = getGame();
-    int*  panelFont = g ? g->bmfontTablePtr(0) : nullptr;
+    const BMFontTable* panelFont = g ? g->bmfontTablePtr(0) : nullptr;
     statsText.init(panelFont);
 
     perksLabel.init();

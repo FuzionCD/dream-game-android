@@ -25,6 +25,7 @@ static const float PARTICLE_SPREAD_X   = 0.17f;    // DAT_10005A504
 static const float PARTICLE_SPREAD_Y   = 0.3f;     // DAT_10005A508
 static const float TILE_ROTATION_RANGE = 360.0f;   // DAT_10005A50C
 static const float PARTICLE_INIT_SCALE = 0.02f;    // DAT_10005A510
+static const float PARTICLE_WARMUP_DT  = 0.1f;     // DAT_10005A514
 
 // helper: set alpha on all 4 vertices, preserving RGB
 // reconstructed from FUN_100008388
@@ -186,9 +187,9 @@ void TitleMenu::draw() {
     mainOverlayObj.quad.draw();
 
     // draw indicator pairs (conditionally)
-    if (indicatorGroup1) {
-        indicatorObj1a.quad.draw();
-        indicatorObj1b.quad.draw();
+    if (shopEnabled) {
+        shopObjA.quad.draw();
+        shopObjB.quad.draw();
     }
 
     if (leaderboardEnabled) {
@@ -278,8 +279,8 @@ void TitleMenu::construct() {
     mainOverlayObj.quad = Quad();
 
     // indicator quads
-    indicatorObj1a.quad = Quad();
-    indicatorObj1b.quad = Quad();
+    shopObjA.quad = Quad();
+    shopObjB.quad = Quad();
     leaderboardObjA.quad = Quad();
     leaderboardObjB.quad = Quad();
     achievementsObjA.quad = Quad();
@@ -289,14 +290,19 @@ void TitleMenu::construct() {
     particleSpeed = 1.5f;
     rotationSpeed = 5.0f;
     colorCycleTimer = 0.0f;
-    titleAnimState = 0.0f;
-    titleButtonPressed = false;
+
+    // FUN_10004a774 zeros the four click-result flags here, not the anim
+    // fields (0x12944/0x12948 are initialized in initVisuals / FUN_10004ad80).
+    startButtonClicked = false;     // +0x12411
+    shopClicked = false;      // +0x125CA
+    leaderboardClicked = false;     // +0x12782
+    achievementsClicked = false;    // +0x1293A
 
     SDL_Log("TitleMenu::construct() complete");
 }
 
 // reconstructed from FUN_10004ad80, line by line against decompilation
-void TitleMenu::initVisuals(bool hasProgress, bool hasAnyScore) {
+void TitleMenu::initVisuals(bool hasKeys, bool hasAnyScore) {
     visible = true;
     titleAnimState = 0.0f;
     titleButtonPressed = false;
@@ -304,26 +310,26 @@ void TitleMenu::initVisuals(bool hasProgress, bool hasAnyScore) {
     overlayClickFlag = false;
     startButtonClicked = false;
 
-    indicatorHighlight1 = false;
+    shopHighlight = false;
     leaderboardHighlight = false;
     achievementsHighlight = false;
 
     // leaderboard and achievements share hasAnyScore; only the shop indicator
     // gates on save progress.
-    indicatorGroup1 = hasProgress;
+    shopEnabled = hasKeys;
     leaderboardEnabled = hasAnyScore;
     achievementsEnabled = hasAnyScore;
 
-    indicatorClicked1 = false;
+    shopClicked = false;
     leaderboardClicked = false;
     achievementsClicked = false;
 
     // all overlay/indicator quads start opaque white.
     setQuadColor(mainOverlayObj.quad, 0xFFFFFFFF);
-    setQuadColor(indicatorObj1a.quad, 0xFFFFFFFF);
+    setQuadColor(shopObjA.quad, 0xFFFFFFFF);
     setQuadColor(leaderboardObjA.quad, 0xFFFFFFFF);
     setQuadColor(achievementsObjA.quad, 0xFFFFFFFF);
-    setQuadColor(indicatorObj1b.quad, 0xFFFFFFFF);
+    setQuadColor(shopObjB.quad, 0xFFFFFFFF);
     setQuadColor(leaderboardObjB.quad, 0xFFFFFFFF);
     setQuadColor(achievementsObjB.quad, 0xFFFFFFFF);
 
@@ -350,6 +356,7 @@ void TitleMenu::initVisuals(bool hasProgress, bool hasAnyScore) {
         float buttonY = virtualHeight + gearPosY + gearHeight * 0.5f + (-0.09375f);
         mainOverlayObj.quad.posX = 0.5f;
         mainOverlayObj.quad.posY = buttonY * 0.5f;
+        mainOverlayObj.quad.snapToPixelGrid();  // FUN_1000573a8; indicators derive from the snapped position
 
         // each indicator is two stacked Quads: A = the gear/circle background
         // (shared UV across all three), B = the unique icon overlay (key /
@@ -368,17 +375,17 @@ void TitleMenu::initVisuals(bool hasProgress, bool hasAnyScore) {
         const float mainX = mainOverlayObj.quad.posX;
         const float mainY = mainOverlayObj.quad.posY;
 
-        indicatorObj1a.quad.setTexCoords(0.7051f, 0.0f, 0.873f, 0.168f);
-        indicatorObj1a.quad.setSize(0.2688f, 0.2688f);
-        indicatorObj1a.quad.posX = mainX + kIndicatorShopXOff;
-        indicatorObj1a.quad.posY = mainY + kIndicatorUpperYNudge;
-        indicatorObj1a.quad.snapToPixelGrid();
+        shopObjA.quad.setTexCoords(0.7051f, 0.0f, 0.873f, 0.168f);
+        shopObjA.quad.setSize(0.2688f, 0.2688f);
+        shopObjA.quad.posX = mainX + kIndicatorShopXOff;
+        shopObjA.quad.posY = mainY + kIndicatorUpperYNudge;
+        shopObjA.quad.snapToPixelGrid();
 
         // shop key icon overlay: same position as the gear background.
-        indicatorObj1b.quad.setTexCoords(0.6846f, 0.1689f, 0.7783f, 0.2627f);
-        indicatorObj1b.quad.setSize(0.15f, 0.15f);
-        indicatorObj1b.quad.posX = indicatorObj1a.quad.posX;
-        indicatorObj1b.quad.posY = indicatorObj1a.quad.posY;
+        shopObjB.quad.setTexCoords(0.6846f, 0.1689f, 0.7783f, 0.2627f);
+        shopObjB.quad.setSize(0.15f, 0.15f);
+        shopObjB.quad.posX = shopObjA.quad.posX;
+        shopObjB.quad.posY = shopObjA.quad.posY;
 
         leaderboardObjA.quad.setTexCoords(0.7051f, 0.0f, 0.873f, 0.168f);
         leaderboardObjA.quad.setSize(0.2688f, 0.2688f);
@@ -450,7 +457,7 @@ void TitleMenu::initVisuals(bool hasProgress, bool hasAnyScore) {
 
         // warm up the particle simulation (100 ticks)
         for (int i = 0; i < 100; i++) {
-            update(0.016f, false);
+            update(PARTICLE_WARMUP_DT, false);
         }
 
         // reset fade after warmup
@@ -462,7 +469,7 @@ void TitleMenu::initVisuals(bool hasProgress, bool hasAnyScore) {
 }
 
 // reconstructed from FUN_10004b574
-void TitleMenu::update(float dt, bool interactable, uint8_t* gameData,
+void TitleMenu::update(float dt, bool interactable,
                        SoundQueue* soundQueue) {
 
     if (!visible) {
@@ -539,8 +546,9 @@ void TitleMenu::update(float dt, bool interactable, uint8_t* gameData,
             // fed raw to sincos.
             float angle = randomFloat(0.0f, ROTATION_CAP);
             float rad = angle;  // sincos_stret takes the raw value
-            newX = sinf(rad) * 0.1875f + 0.5f;
-            newY = cosf(rad) * 0.1875f + 0.55625f;
+            // FUN_100057250 returns radius*cos in s0 (newX), radius*sin in s1 (newY)
+            newX = cosf(rad) * 0.1875f + 0.5f;
+            newY = sinf(rad) * 0.1875f + 0.55625f;
             p.posX = newX;
             p.posY = newY;
             scale = 0.5f;
@@ -565,10 +573,11 @@ void TitleMenu::update(float dt, bool interactable, uint8_t* gameData,
         uint8_t alpha = (uint8_t)((1.0f - t) * FADE_START_ALPHA);
         setQuadAlpha(fadeOverlay.quad, alpha);
 
-        // fade the extra quads
+        // fade the extra quads. binary calls FUN_10003a808 with param_4=1, which
+        // applies the cosine smoothstep (same remap as t above) before lerping.
         for (int i = 0; i < BOARD_EXTRA_QUADS; i++) {
             uint32_t baseColor = logoPieces[i].quad.vertices[0].color;
-            uint32_t fadedColor = lerpColor(fadeProgress, 0xFFFFFFFF, baseColor);
+            uint32_t fadedColor = lerpColor(t, 0xFFFFFFFF, baseColor);
             setQuadColor(logoPieces[i].quad, fadedColor);
         }
 
@@ -587,7 +596,7 @@ void TitleMenu::update(float dt, bool interactable, uint8_t* gameData,
     rotationSpeed = titleAnimState * ROTATION_SPEED_MULT + (1.0f - titleAnimState) * 5.0f;
 
     // touch handling (from FUN_10004b574)
-    if (!interactable || !gameData) {
+    if (!interactable || !getGame()) {
         return;
     }
 
@@ -602,30 +611,38 @@ void TitleMenu::update(float dt, bool interactable, uint8_t* gameData,
             return;
         }
 
-        // hit test against the start button (mainOverlayObj)
+        // the four buttons are a mutually exclusive else-if cascade: each
+        // enabled-but-missed button falls through to the next, and only the
+        // first hit highlights. any hit converges on a single soundQueue
+        // trigger(0) at the shared tail (FUN_100035ccc(game+0x3880, 0)).
+        bool pressed = false;
+
         if (hitTestQuad(mainOverlayObj.quad, touchX, touchY)) {
             overlayClickFlag = true;
             setQuadColor(mainOverlayObj.quad, 0xFFB4B4B4);
-        }
-
-        // hit test against indicator quads
-        if (indicatorGroup1 && hitTestQuad(indicatorObj1a.quad, touchX, touchY)) {
-            indicatorHighlight1 = true;
-            setQuadColor(indicatorObj1a.quad, 0xFFB4B4B4);
-            setQuadColor(indicatorObj1b.quad, 0xFFB4B4B4);
-        }
-
-        if (leaderboardEnabled && hitTestQuad(leaderboardObjA.quad, touchX, touchY)) {
+            pressed = true;
+        } else if (shopEnabled && hitTestQuad(shopObjA.quad, touchX, touchY)) {
+            shopHighlight = true;
+            setQuadColor(shopObjA.quad, 0xFFB4B4B4);
+            setQuadColor(shopObjB.quad, 0xFFB4B4B4);
+            pressed = true;
+        } else if (leaderboardEnabled && hitTestQuad(leaderboardObjA.quad, touchX, touchY)) {
             leaderboardHighlight = true;
             setQuadColor(leaderboardObjA.quad, 0xFFB4B4B4);
             setQuadColor(leaderboardObjB.quad, 0xFFB4B4B4);
-        }
-
-        if (achievementsEnabled && hitTestQuad(achievementsObjA.quad, touchX, touchY)) {
+            pressed = true;
+        } else if (achievementsEnabled && hitTestQuad(achievementsObjA.quad, touchX, touchY)) {
             achievementsHighlight = true;
             setQuadColor(achievementsObjA.quad, 0xFFB4B4B4);
             setQuadColor(achievementsObjB.quad, 0xFFB4B4B4);
+            pressed = true;
         }
+
+        // this was a test to use sound 0, but it doesn't really
+        // sound very good. struck out for now.
+        /*if (pressed && soundQueue) {
+            soundQueue->trigger(0);
+        }*/
 
     } else if (touchState == 0) {
         // touch released
@@ -650,17 +667,17 @@ void TitleMenu::update(float dt, bool interactable, uint8_t* gameData,
             }
         }
 
-        if (indicatorHighlight1) {
-            indicatorHighlight1 = false;
-            setQuadColor(indicatorObj1a.quad, 0xFFFFFFFF);
-            setQuadColor(indicatorObj1b.quad, 0xFFFFFFFF);
+        if (shopHighlight) {
+            shopHighlight = false;
+            setQuadColor(shopObjA.quad, 0xFFFFFFFF);
+            setQuadColor(shopObjB.quad, 0xFFFFFFFF);
 
-            if (hitTestQuad(indicatorObj1a.quad, touchX, touchY)) {
-                // indicator 1 released on target: set result flag, sound 0
-                indicatorClicked1 = true;
+            if (hitTestQuad(shopObjA.quad, touchX, touchY)) {
+                // indicator 1 released on target: set result flag, sound 1
+                shopClicked = true;
 
                 if (soundQueue) {
-                    soundQueue->trigger(0);
+                    soundQueue->trigger(1);
                 }
             } else {
                 // missed: sound 2
@@ -676,10 +693,11 @@ void TitleMenu::update(float dt, bool interactable, uint8_t* gameData,
             setQuadColor(leaderboardObjB.quad, 0xFFFFFFFF);
 
             if (hitTestQuad(leaderboardObjA.quad, touchX, touchY)) {
+                // released on target: set result flag, sound 1
                 leaderboardClicked = true;
 
                 if (soundQueue) {
-                    soundQueue->trigger(0);
+                    soundQueue->trigger(1);
                 }
             } else {
 
@@ -695,10 +713,11 @@ void TitleMenu::update(float dt, bool interactable, uint8_t* gameData,
             setQuadColor(achievementsObjB.quad, 0xFFFFFFFF);
 
             if (hitTestQuad(achievementsObjA.quad, touchX, touchY)) {
+                // released on target: set result flag, sound 1
                 achievementsClicked = true;
 
                 if (soundQueue) {
-                    soundQueue->trigger(0);
+                    soundQueue->trigger(1);
                 }
             } else {
 

@@ -252,11 +252,10 @@ Game* Game::create() {
         return nullptr;
     }
 
-    // zero the binary-layout region (gameState_ through saveSlot4Scratch_).
-    // uses at(0) so we don't need direct access to the now-typed private
-    // fields. C++ container heads (vectors, sets) inside this region get
-    // their RAII state restored via the placement-new calls below.
-    memset(game->at(0), 0, GAME_STRUCT_SIZE);
+    // zero the whole struct (gameState_ is at offset 0). C++ container heads
+    // (vectors, sets) inside this region get their RAII state restored via the
+    // placement-new calls below.
+    memset(game, 0, GAME_STRUCT_SIZE);
     memset(game->textures, 0, sizeof(game->textures));
 
     // explicit non-zero defaults from the binary's Game ctor (FUN_1000437a4
@@ -320,13 +319,12 @@ Game* Game::create() {
 
     // save-slot scratch buffers (one std::vector<uint8_t> per slot; holds
     // the encoded blob between encode and disk write). all 5 lived under
-    // the memset above; placement-new restores libc++'s empty-sentinel
-    // state. typed access via field<std::vector<uint8_t>>(offset).
-    new (game->at(0x2E6B8)) std::vector<uint8_t>();   // slot 0
-    new (game->at(0x2E6F0)) std::vector<uint8_t>();   // slot 1
-    new (game->at(0x2E760)) std::vector<uint8_t>();   // slot 2
-    new (game->at(0x2E7A0)) std::vector<uint8_t>();   // slot 3
-    new (game->at(0x2E848)) std::vector<uint8_t>();   // slot 4
+    // the memset above; placement-new restores libc++'s empty-sentinel state.
+    new (&game->saveScratch(0)) std::vector<uint8_t>();
+    new (&game->saveScratch(1)) std::vector<uint8_t>();
+    new (&game->saveScratch(2)) std::vector<uint8_t>();
+    new (&game->saveScratch(3)) std::vector<uint8_t>();
+    new (&game->saveScratch(4)) std::vector<uint8_t>();
 
     // GameSnapshot at +0x2E348. owns 5 std::vector heads + 2 std::map
     // heads + a TileWeightPool, all RAII-managed C++ containers wiped
@@ -370,8 +368,8 @@ Game* Game::create() {
 
     // data[] is already zeroed by memset above. now construct subsystem objects.
     // (called from the game constructor FUN_1000437a4)
-    game->board().construct();   // FUN_10004a774
-    game->world().construct();   // FUN_100055268
+    game->titleMenu().construct();  // FUN_10004a774
+    game->world().construct();      // FUN_100055268
 
     // mark all sound handles as unloaded
     for (int i = 0; i < SOUND_QUEUE_SLOTS; i++) {
@@ -514,20 +512,20 @@ static bool parseFntFile(BMFontTable* table, const char* path, int textureIdx) {
             if (matched == 8 && id >= 0 && id < 128
                     && scaleW > 0 && scaleH > 0
                     && table->lineHeight > 0) {
-                // 9 floats packed at table->entryBytes + id*36, mirroring
-                // the binary's `param_1[id*9 + 2..id*9 + 10]` writes.
-                float* e = reinterpret_cast<float*>(table->entryBytes + id * 36);
+                // fill char `id`'s glyph entry, pre-dividing by the atlas scale
+                // and line height (mirrors the binary's per-char float writes).
+                BMFontEntry& e = table->entries[id];
                 float lineH = (float)table->lineHeight;
-                e[0] = (float)x / (float)scaleW;                          // uvU
-                e[1] = (float)y / (float)scaleH;                          // uvV
-                e[2] = e[0] + (float)w / (float)scaleW;                   // uvU2
-                e[3] = e[1] + (float)h / (float)scaleH;                   // uvV2
-                e[4] = (float)w / lineH;                                  // sizeW
-                e[5] = (float)h / lineH;                                  // sizeH
-                e[6] = (float)xOff / lineH * 0.5f;                        // xoffsetHalved
-                e[7] = (float)yOff / lineH + e[5] * 0.5f
-                       - (float)table->base / lineH;                      // yoffsetCenter
-                e[8] = (float)xAdv / lineH * 0.5f;                        // xadvanceHalved
+                e.uvU  = (float)x / (float)scaleW;
+                e.uvV  = (float)y / (float)scaleH;
+                e.uvU2 = e.uvU + (float)w / (float)scaleW;
+                e.uvV2 = e.uvV + (float)h / (float)scaleH;
+                e.sizeW = (float)w / lineH;
+                e.sizeH = (float)h / lineH;
+                e.xoffsetHalved  = (float)xOff / lineH * 0.5f;
+                e.yoffsetCenter  = (float)yOff / lineH + e.sizeH * 0.5f
+                                   - (float)table->base / lineH;
+                e.xadvanceHalved = (float)xAdv / lineH * 0.5f;
                 charsParsed++;
             }
         }
@@ -595,27 +593,46 @@ void Game::dispatchSounds() {
 
     while ((slot = soundQueue.getNextTriggered()) != SOUND_QUEUE_NONE) {
 
-        if (slot < NUM_SOUND_SLOTS && sSoundVariantCount[slot] > 0) {
-            // pick a random variant (FUN_100035ef4, stream 0, the cosmetic stream)
-            int variantCount = sSoundVariantCount[slot];
-            int variant = (variantCount > 1) ? rngInt(0, variantCount - 1, 0) : 0;
-            int handle = sSoundHandles[slot][variant];
+        // every triggered slot draws variant + pitch off stream 0 and plays,
+        // matching the binary's unconditional per-slot calls (GameViewController
+        // ::update), keeping the cosmetic RNG stream in sync. slot is always
+        // < NUM_SOUND_SLOTS (82 = sentinel).
 
-            // gain = tableGain * GAIN_SCALE * seGain (FUN_100035de4)
-            float gain = sSoundGains[slot] * SOUND_GAIN_SCALE * seGain;
+        // pick a random variant handle (FUN_100035ef4, stream 0). a non-empty
+        // slot always draws, even with a single variant; an empty slot yields an
+        // invalid handle, which playSound ignores.
+        int handle = -1;
 
-            // random pitch 0.85 to 1.15 (FUN_100035e80, DAT_10005a1dc/e0, stream 0)
-            float pitch = rngFloat(0.85f, 1.15f, 0);
-
-            AudioEngine::playSound(handle, gain, pitch);
+        if (sSoundVariantCount[slot] > 0) {
+            int variant = rngInt(0, sSoundVariantCount[slot] - 1, 0);
+            handle = sSoundHandles[slot][variant];
         }
+
+        // gain (FUN_100035de4): clamp(seGain,0,1)^2 * clamp(tableGain * 1.3, 0, 1).
+        // seGain is already clamped to (0.05, 1.0] above.
+        float scaled = sSoundGains[slot] * SOUND_GAIN_SCALE;
+
+        if (scaled > 1.0f) {
+            scaled = 1.0f;
+        }
+
+        if (scaled < 0.0f) {
+            scaled = 0.0f;
+        }
+
+        float gain = seGain * seGain * scaled;
+
+        // random pitch 0.85 to 1.15 (FUN_100035e80, DAT_10005a1dc/e0, stream 0).
+        float pitch = rngFloat(0.85f, 1.15f, 0);
+
+        AudioEngine::playSound(handle, gain, pitch);
     }
 }
 
-// FUN_10004535c, resetFade then push the right music track stack for
-// whichever top-level subsystem is currently visible. mirrors the binary's
-// `if scorePanel.visible {} else if titleMenu.visible setTrack(0) else if
-// board.visible push 1..layerCount`.
+// resetFade (crossfade out), then queue the track for whichever top-level
+// subsystem is now visible: title -> track 0, score panel -> silence, gameplay
+// -> one random track (1..N-1). this fires on screen changes; level-to-level
+// changes within gameplay crossfade via GameBoard::initLevelContent.
 void Game::syncMusic() {
     musicController.resetFade();
 
@@ -624,10 +641,9 @@ void Game::syncMusic() {
     } else if (titleMenu_.visible) {
         musicController.setTrack(0);
     } else if (boardPtr_ != nullptr && boardPtr_->visible) {
-
-        for (int i = 1; i < 16; i++) {
-            musicController.setTrack(i);
-        }
+        // one random gameplay track; the level a player resumes or starts on
+        // gets its own track, and each subsequent level crossfades to a new one.
+        musicController.setTrack(rngInt(1, MUSIC_TRACK_COUNT - 1, 0));
     }
 
     musicController.applyToAudio();
@@ -655,13 +671,11 @@ void Game::init() {
     gameState() = 0;
     inputState() = 0;
 
-    // animation speed constants at +0x36A0..+0x36AC. the binary packs
-    // +0x36A0 / +0x36A4 as one 64-bit store, +0x36A8 / +0x36AC as two
-    // 32-bit stores.
-    field<float>(0x36A0) = 0.005f;
-    field<float>(0x36A4) = 0.035f;
-    field<float>(0x36A8) = 0.08f;
-    field<float>(0x36AC) = 0.08f;
+    // animation speed constants.
+    animTiming_005a_ = 0.005f;
+    animTiming_035_  = 0.035f;
+    animTiming_08a_  = 0.08f;
+    animTiming_08b_  = 0.08f;
 
     // (globalSeVolume / globalBgmVolume defaults are set in Game::create
     // before SaveSystem::load; see save_buffers.h. FUN_100045250 does
@@ -700,12 +714,10 @@ void Game::init() {
     //                 FUN_100037e88(leaderboardMenu));
     // gating the shop / leaderboard / achievements indicator buttons on
     // (1) any saved keys and (2) any saved leaderboard entries.
-    board().initVisuals(shop().keys > 0, scoreHistory().hasAnyEntries());
+    titleMenu().initVisuals(shop().keys > 0, scoreHistory().hasAnyEntries());
 
-    // sync music (FUN_10004535c). titleMenu just opened -> setTrack(0).
-    // setTargetVolume(1.0) is the binary's Game::init explicit volume reset;
-    // keep it before the sync so unmute-on-startup still works.
-    musicController.setTargetVolume(1.0f);
+    // sync music (FUN_10004535c). titleMenu just opened -> setTrack(0). the
+    // first Game::update frame establishes the volume from gb.bgmVolume.
     syncMusic();
 
     SDL_Log("Game::init() complete");
@@ -714,15 +726,17 @@ void Game::init() {
 // reconstructed from FUN_100045410
 void Game::update(float dt) {
 
-    // clamp dt (DAT_10005a4a8 = 0.1)
+    // clamp dt to [0.0, 0.1]: FUN_1000570d4(dt, 0.0, DAT_10005a4a8=0.1)
     if (dt > MAX_DELTA_TIME) {
         dt = MAX_DELTA_TIME;
+    } else if (dt < 0.0f) {
+        dt = 0.0f;
     }
 
     // touch state machine (from decompilation)
     int ns = inputState();
 
-    if (ns >= 3) {
+    if (ns == 3 || ns == 4) {
         inputState() = 0;
     } else if (ns == 2 && gameState() == 0) {
         inputState() = 1;
@@ -752,12 +766,11 @@ void Game::update(float dt) {
     // update overlay transition animation
     overlay().update(dt);
 
-    // update board (from FUN_100045410 decompilation)
-    // board at param_2 + 0x1118 (int*) = game + 0x4460
+    // update title menu (from FUN_100045410 decompilation)
     // interactable = overlay not visible (piVar3 = overlay at 0x2E178)
-    if (board().visible) {
+    if (titleMenu().visible) {
         bool boardInteractable = !overlay().isVisible();
-        board().update(dt, boardInteractable, at(0), &soundQueue);
+        titleMenu().update(dt, boardInteractable, &soundQueue);
 
         // FUN_100045410: when titleMenu is visible and overlay isn't running,
         // check the four button click flags in priority order. each opens
@@ -765,8 +778,8 @@ void Game::update(float dt) {
         // overlay-complete switch then dispatches the matching case.
         if (boardInteractable) {
 
-            if (board().startButtonClicked) {
-                board().startButtonClicked = false;
+            if (titleMenu().startButtonClicked) {
+                titleMenu().startButtonClicked = false;
 
                 // T = hasSavedRun ? 1 : 0. hasSavedRun is the slot-0
                 // loader's `*(ulong*)(game+0x2E6D0) = blobLength` write
@@ -779,26 +792,26 @@ void Game::update(float dt) {
                 const int target = (hasSavedRun() != 0) ? 1 : 0;
                 transitionTarget() = target;
 
-                overlay().start(board().mainOverlayObj.quad.posY);
+                overlay().start(titleMenu().mainOverlayObj.quad.posY);
                 SDL_Log("Game: startButton -> T=%d (hasSavedRun=%llu)",
                         target, (unsigned long long)hasSavedRun());
             }
-            else if (board().indicatorClicked1) {
+            else if (titleMenu().shopClicked) {
 
                 transitionTarget() = 2;
-                overlay().start(board().indicatorObj1a.quad.posY);
+                overlay().start(titleMenu().shopObjA.quad.posY);
                 SDL_Log("Game: indicator1 -> T=2 (shop)");
             }
-            else if (board().leaderboardClicked) {
+            else if (titleMenu().leaderboardClicked) {
 
                 transitionTarget() = 3;
-                overlay().start(board().leaderboardObjA.quad.posY);
+                overlay().start(titleMenu().leaderboardObjA.quad.posY);
                 SDL_Log("Game: indicator2 -> T=3 (leaderboard)");
             }
-            else if (board().achievementsClicked) {
+            else if (titleMenu().achievementsClicked) {
 
                 transitionTarget() = 4;
-                overlay().start(board().achievementsObjA.quad.posY);
+                overlay().start(titleMenu().achievementsObjA.quad.posY);
                 SDL_Log("Game: indicator3 -> T=4 (achievements)");
             }
         }
@@ -817,10 +830,10 @@ void Game::update(float dt) {
             if (world().tickFadeOut(dt)) {
                 sCharSelectExiting = false;
                 transitionTarget() = kBackWorldToTitle;
-                overlay().start(board().mainOverlayObj.quad.posY);
+                overlay().start(titleMenu().mainOverlayObj.quad.posY);
             }
         } else {
-            world().update(dt, at(0), &soundQueue);
+            world().update(dt, &soundQueue);
         }
 
         // if a character was selected, generate the game level
@@ -1155,7 +1168,7 @@ void Game::update(float dt) {
                     unlockedFaces.erase(poolId);
                 }
 
-                board().visible = false;
+                titleMenu().visible = false;
                 world().generate((uint32_t)stashedDifficulty(),
                                  unlockedFaces);
                 syncMusic();
@@ -1171,7 +1184,7 @@ void Game::update(float dt) {
                 // GameBoard::restoreFromSnapshot rebuilds the entire run from
                 // the saved GameSnapshot (player / rack / placed tiles / HUD /
                 // nemesis / hex map / reserve queue / RNG / exit chrome).
-                board().visible = false;
+                titleMenu().visible = false;
 
                 GameBoard* gb = boardPtr();
 
@@ -1188,10 +1201,9 @@ void Game::update(float dt) {
 
             case 2: {
                 // title -> shop. Shop::open sets up row TextItems + key
-                // icons + initial state. Shop::draw + Shop::update still
-                // pending (F7-C / F7-D); shop will be visible flagged but
-                // unrendered until those phases land.
-                board().visible = false;
+                // icons + initial state; Shop::draw / Shop::update render and
+                // run it while visible.
+                titleMenu().visible = false;
                 shop().open();
                 // binary does not syncMusic here; shop inherits title music.
                 SDL_Log("Game: T=2 -> shop");
@@ -1203,7 +1215,7 @@ void Game::update(float dt) {
                 // FUN_100037118, builds the 3-difficulty rank display from
                 // ScoreHistory. binary does not syncMusic here; leaderboard
                 // inherits title music.
-                board().visible = false;
+                titleMenu().visible = false;
                 leaderboardMenu().open();
                 SDL_Log("Game: T=3 -> leaderboard");
                 break;
@@ -1215,7 +1227,7 @@ void Game::update(float dt) {
                 // sortedDisplay map from AchievementTracker state, primes
                 // each tile's progress visuals. binary does not syncMusic
                 // here; achievements inherit title music.
-                board().visible = false;
+                titleMenu().visible = false;
                 achievementsMenu().open();
                 SDL_Log("Game: T=4 -> achievements");
                 break;
@@ -1238,7 +1250,7 @@ void Game::update(float dt) {
                 if (boardPtr()) {
                     boardPtr()->visible = false;
                 }
-                board().initVisuals(shop().keys > 0,
+                titleMenu().initVisuals(shop().keys > 0,
                                      scoreHistory().hasAnyEntries());
                 syncMusic();
                 SDL_Log("Game: T=%d -> title return (from gameplay)", target);
@@ -1249,7 +1261,7 @@ void Game::update(float dt) {
                 // shop close -> title return. no syncMusic (shop inherits
                 // title music).
                 shop().visible = false;
-                board().initVisuals(shop().keys > 0,
+                titleMenu().initVisuals(shop().keys > 0,
                                      scoreHistory().hasAnyEntries());
                 SDL_Log("Game: T=7 -> title return (from shop)");
                 break;
@@ -1258,7 +1270,7 @@ void Game::update(float dt) {
             case 8: {
                 // leaderboard close -> title return. no syncMusic.
                 leaderboardMenu().visible = false;
-                board().initVisuals(shop().keys > 0,
+                titleMenu().initVisuals(shop().keys > 0,
                                      scoreHistory().hasAnyEntries());
                 SDL_Log("Game: T=8 -> title return (from leaderboard)");
                 break;
@@ -1267,7 +1279,7 @@ void Game::update(float dt) {
             case 9: {
                 // achievements close -> title return. no syncMusic.
                 achievementsMenu().visible = false;
-                board().initVisuals(shop().keys > 0,
+                titleMenu().initVisuals(shop().keys > 0,
                                      scoreHistory().hasAnyEntries());
                 SDL_Log("Game: T=9 -> title return (from achievements)");
                 break;
@@ -1280,7 +1292,7 @@ void Game::update(float dt) {
                 // then OPENS on the restored title. syncMusic crossfades the
                 // music from silent back up to the title track.
                 world().visible = false;
-                board().initVisuals(shop().keys > 0,
+                titleMenu().initVisuals(shop().keys > 0,
                                      scoreHistory().hasAnyEntries());
                 syncMusic();
                 SDL_Log("Game: T=10 -> title return (from character select)");
@@ -1343,9 +1355,9 @@ void Game::draw() {
         achievementsMenu().draw();
     }
 
-    // 6. board (at game+0x4460)
-    if (board().visible) {
-        board().draw();
+    // 6. title screen (at game+0x4460)
+    if (titleMenu().visible) {
+        titleMenu().draw();
     }
 
     // 7. score panel (pointer at game+0x19128). drawn after the title menu
@@ -1451,7 +1463,7 @@ bool Game::handleBackPressed() {
     }
 
     // title screen -> quit the app.
-    if (board().visible) {
+    if (titleMenu().visible) {
         return true;
     }
 

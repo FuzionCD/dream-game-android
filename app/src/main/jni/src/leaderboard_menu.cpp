@@ -188,10 +188,13 @@ void LeaderboardMenu::open() {
         // topY here puts the diff sections half-a-header-height too high.
         const float headerCenterY = headerLabel.topY
                                   + headerLabel.getHeight() * 0.5f;
+        // binary sums (centerY+cal)*0.5 + baseline FIRST, then adds the
+        // diff term last: D + (H05 + B). float add is not associative, so
+        // the grouping is load-bearing (asm 0x10003737c forms H05+B, then
+        // 0x100037390 `fadd s0,s1,s0` adds D last).
         const float labelY =
             (static_cast<float>(diff) * kDiffYStridePx) / 640.0f
-            + (headerCenterY + kDiffYCalibration) * 0.5f
-            + kDiffYBaseline;
+            + ((headerCenterY + kDiffYCalibration) * 0.5f + kDiffYBaseline);
         sec.diffLabel.posX = labelCenteredX;
         sec.diffLabel.posY = labelY;
 

@@ -586,7 +586,7 @@ void Shop::open() {
     };
 
     Game* g = getGame();
-    int*  glyphTable = (g != nullptr) ? g->bmfontTablePtr(0) : nullptr;
+    const BMFontTable* glyphTable = (g != nullptr) ? g->bmfontTablePtr(0) : nullptr;
 
     for (int i = 0; i < 3; i++) {
         ShopUnlockRow& row = rows[i];
@@ -632,7 +632,7 @@ void Shop::open() {
     keysBackup = keys;
     keyIcons.clear();   // = FUN_100055040 (libc++ list::clear).
 
-    // key icon visual: UV (0.3544922, 0.66015625) -> (0.4168, 0.7383),
+    // key icon visual: UV (0.3544922, 0.66015625) -> (0.4170, 0.7383),
     // size 0.1 x 0.125. all icons share the same glyph; only positions
     // differ.
     //
@@ -661,7 +661,7 @@ void Shop::open() {
     for (int i = 0; i < keys; i++) {
         ShopKeyIcon icon;   // default-constructed (Quad ctor zeroes verts +
                             //   sets UV/size to unit-quad defaults)
-        icon.quad.setTexCoords(0.3544922f, 0.66015625f, 0.4167969f, 0.7382812f);
+        icon.quad.setTexCoords(0.3544922f, 0.66015625f, 0.4169922f, 0.7382812f);
         icon.quad.setSize(0.1f, 0.125f);
         icon.quad.posX = baseX - static_cast<float>(i) * spacing;
         icon.quad.posY = kKeyIconPosY;
@@ -938,21 +938,25 @@ void Shop::recomputeRowAvailability() {
 
 // FUN_10005250c, Shop::formatUnlockedCounts.
 //
-// builds "X/Y Unlocked" text for each row's unlockedCountText. binary's
-// sprintf args were lost in Ghidra's decomp; semantically it's
-// (unlockedCount, totalSeeded). pool.size() + unlocks.size() is
-// invariant under commit (pop from pool, push to unlocks), so the live
-// total matches seedPools' initial count.
+// builds "X/Y Unlocked" text for each row's unlockedCountText. the binary
+// (recovered from disasm) uses fixed totals with unlocked = total - remaining
+// pool: faces 30, snags 20, events 15. faces keep the literal 30 (two face IDs
+// are never seeded); snags/events derive the total from pool + unlocks, which is
+// invariant under commit (pop from pool, push to unlocks) and adapts if the
+// pools grow.
 void Shop::formatUnlockedCounts() {
     char buf[64];
 
-    const int faceTotal  = (int)facePool.size()  + (int)faceUnlocks.size();
+    // faces have a fixed total of 30 with two IDs that are never seeded, so the
+    // pool starts at 28 and the count is 30 - remaining pool (reads 2/30 at the
+    // start). snags and events have no unseeded entries, so pool + unlocks gives
+    // their true total and adapts if the pools grow.
+    std::snprintf(buf, sizeof(buf), "%d/%d Unlocked",
+                  30 - (int)facePool.size(), 30);
+    rows[0].unlockedCountText.setString(buf, -1);
+
     const int snagTotal  = (int)snagPool.size()  + (int)snagUnlocks.size();
     const int eventTotal = (int)eventPool.size() + (int)eventUnlocks.size();
-
-    std::snprintf(buf, sizeof(buf), "%d/%d Unlocked",
-                  (int)faceUnlocks.size(), faceTotal);
-    rows[0].unlockedCountText.setString(buf, -1);
 
     std::snprintf(buf, sizeof(buf), "%d/%d Unlocked",
                   (int)snagUnlocks.size(), snagTotal);
@@ -1437,7 +1441,6 @@ void Shop::update(float dt, float /*param2*/) {
                     // event unlock. binary @ 0x100053458..0x100053454.
                     int evId = rngPopSet(eventPool, 0);
                     eventUnlocks.push_back(evId);
-                    avatarTextureIndex = 10;
                     heapPreview = new EventSlot();
                     heapPreview->init(evId, 0);
                     // anchor the EventSlot at animQuads[1]'s position.

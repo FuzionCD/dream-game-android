@@ -5,6 +5,7 @@
 #include "text_item.h"
 #include <cstddef>
 #include <cstdint>
+#include <list>
 
 // reconstructed from Ghidra:
 //   ctor:        FUN_100010764  (allocated via operator_new(0x1018))
@@ -45,7 +46,7 @@
 // the "keys row" linked list at +0xE50/+0xE58/+0xE60 holds heap-allocated
 // 0xF0-byte icon nodes, one per key earned this run, all rendering the
 // same key sprite from the panel atlas. these are the currency the player
-// can spend in the (unported) between-run shop.
+// can spend in the between-run shop.
 //
 // a separate post-run "rank visual" (resultRankQuad + resultPanelQuad)
 // switches UV/size between 4 cases driven by the int returned from
@@ -62,20 +63,18 @@ struct ScorePanelRow {
 static_assert(sizeof(ScorePanelRow) == 0x198,
               "ScorePanelRow must be 0x198 bytes, 3 TextItems of 0x88 each.");
 
-// heap-allocated 0xF0-byte node per key earned. all icons share the same
-// atlas UV; they tile horizontally at the bottom of the panel.
-struct ScorePanelKeyIcon;
-
-// list head matches the binary's intrusive doubly-linked layout at +0xE50:
-// head (last node), tail (first node), count.
-struct ScorePanelKeyList {
-    ScorePanelKeyIcon* head;       // +0x00  sentinel.prev (last pushed node)
-    ScorePanelKeyIcon* tail;       // +0x08  sentinel.next (first pushed node)
-    uint64_t           count;      // +0x10
+// the per-key icon value, stored in the keysRow std::list. all icons share the
+// same atlas UV and tile horizontally at the bottom of the panel. this is the
+// std::list node body: the binary's 0xF0 node is its 0x10 prev/next header plus
+// this 0xE0 value.
+struct KeyIconValue {
+    Quad  tileQuad;    // +0x00..+0xD7
+    float progress;    // +0xD8  scale-in animation 0..1
+    float popInTimer;  // +0xDC  per-icon stagger delay
 };
 
-static_assert(sizeof(ScorePanelKeyList) == 0x18,
-              "ScorePanelKeyList must be 0x18 bytes.");
+static_assert(sizeof(KeyIconValue) == 0xE0,
+              "KeyIconValue must be 0xE0 (the std::list node value).");
 
 class ScorePanel {
 public:
@@ -169,7 +168,8 @@ public:
                                               //         values
     uint8_t               padE4C[4];          // +0xE4C..+0xE4F
 
-    ScorePanelKeyList     keysRow;            // +0xE50..+0xE67  head/tail/count
+    std::list<KeyIconValue> keysRow;          // +0xE50..+0xE67 (libc++ head:
+                                              // prev/next/size = 0x18 bytes)
 
     Quad                  resultRankQuad;     // +0xE68..+0xF3F  set by
                                               //                 setResultRankVisual

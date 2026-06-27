@@ -119,8 +119,9 @@ void PlayerSystem::draw() {
 void PlayerSystem::push(Item* item) {
     int slot = item->type;
 
+    // defensive bounds check (the binary indexes baseItems unguarded; item->type
+    // is engine-constrained to 0..2). kept to protect the array access.
     if (slot < 0 || slot > 2) {
-        // bad slot, ignore
         return;
     }
 

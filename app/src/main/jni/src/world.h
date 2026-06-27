@@ -52,8 +52,9 @@ public:
     // FUN_100056048: draw the world map
     void draw();
 
-    // FUN_100055b94: update the world map (handles selection)
-    void update(float dt, uint8_t* gameData = nullptr, class SoundQueue* soundQueue = nullptr);
+    // FUN_100055b94: update the world map (handles selection). touch state is
+    // read via getGame(); touch handling runs only when getGame() is available.
+    void update(float dt, class SoundQueue* soundQueue = nullptr);
 
     // back-button fade-out (no binary equivalent): the reverse of update()'s
     // fade-in ramp. fades the char-select content out to black at the same

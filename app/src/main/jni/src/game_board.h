@@ -192,7 +192,7 @@ static_assert(sizeof(std::list<TweenBody>)         == 0x18, "std::list head must
 // 5 rack slots: the tiles in the player's hand (binary: GameBoard+0x158).
 // slot 0 is "freshest"; every populateRack() pops a tile from the reserve
 // queue and slides existing slots up one index. when the player plays a
-// tile, it moves from rack[N] into the page list (Phase C).
+// tile, it moves from rack[N] into the page list.
 #define RACK_SLOT_COUNT 5
 
 // number of category tabs across the top of the menu UI (FUN_100014ed8 ctor

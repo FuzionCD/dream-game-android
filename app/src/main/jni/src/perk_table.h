@@ -31,7 +31,8 @@
 // .cpp file.
 
 struct PerkLevelEntry {
-    int         unlockLevel;   // FUN_10004223c param_3, XP level required to unlock
+    int         prerequisite;  // FUN_10004223c param_2 (level struct +0); 0x19 = none sentinel
+    int         unlockLevel;   // FUN_10004223c param_3 (level struct +4), XP level required to unlock
     const char* line0;
     const char* line1;
 };
@@ -75,97 +76,98 @@ inline constexpr CategoryIconUV CATEGORY_ICON_UV[7] = {
 // FUN_1000421a4.
 
 inline constexpr PerkLevelEntry PERK_1_LEVELS[] = {
-    { 5,  "Gain 1 {A} per turn while your", "{H} is less than half max {H}" },
-    { 12, "Gain 2 {A} per turn while your", "{H} is less than half max {H}" },
-    { 20, "Gain 3 {A} per turn while your", "{H} is less than half max {H}" },
+    { 0x19, 5,  "Gain 1 {A} per turn while your", "{H} is less than half max {H}" },
+    { 0x19, 12, "Gain 2 {A} per turn while your", "{H} is less than half max {H}" },
+    { 0x19, 20, "Gain 3 {A} per turn while your", "{H} is less than half max {H}" },
 };
 inline constexpr PerkLevelEntry PERK_2_LEVELS[] = {
-    { 0,  "Gain 1 {A} {D} per discarded {H}", "" },
-    { 5,  "Gain 2 {A} {D} per discarded {H}", "" },
-    { 10, "Gain 3 {A} {D} per discarded {H}", "" },
+    { 0x19, 0,  "Gain 1 {A} {D} per discarded {H}", "" },
+    { 0x19, 5,  "Gain 2 {A} {D} per discarded {H}", "" },
+    { 0x19, 10, "Gain 3 {A} {D} per discarded {H}", "" },
 };
 inline constexpr PerkLevelEntry PERK_3_LEVELS[] = {
-    { 3,  "Gain 2 {A} per defeated snag", "" },
-    { 10, "Gain 5 {A} per defeated snag", "" },
+    { 0x19, 3,  "Gain 2 {A} per defeated snag", "" },
+    { 0x19, 10, "Gain 5 {A} per defeated snag", "" },
 };
 inline constexpr PerkLevelEntry PERK_5_LEVELS[] = {
-    { 2,  "Gain 1 {D} per turn while your", "{D} is less than your {A}" },
-    { 8,  "Gain 2 {D} per turn while your", "{D} is less than your {A}" },
-    { 12, "Gain 3 {D} per turn while your", "{D} is less than your {A}" },
+    { 0x19, 2,  "Gain 1 {D} per turn while your", "{D} is less than your {A}" },
+    { 0x19, 8,  "Gain 2 {D} per turn while your", "{D} is less than your {A}" },
+    { 0x19, 12, "Gain 3 {D} per turn while your", "{D} is less than your {A}" },
 };
 inline constexpr PerkLevelEntry PERK_6_LEVELS[] = {
-    { 2,  "Gain 1 {D} per placed {A} tile", "" },
-    { 6,  "Gain 2 {D} per placed {A} tile", "" },
-    { 10, "Gain 3 {D} per placed {A} tile", "" },
-    { 15, "Gain 4 {D} per placed {A} tile", "" },
+    { 0x19, 2,  "Gain 1 {D} per placed {A} tile", "" },
+    { 0x19, 6,  "Gain 2 {D} per placed {A} tile", "" },
+    { 0x19, 10, "Gain 3 {D} per placed {A} tile", "" },
+    { 0x19, 15, "Gain 4 {D} per placed {A} tile", "" },
 };
 inline constexpr PerkLevelEntry PERK_7_LEVELS[] = {
-    { 6,  "Draw {D} tile per discarded snag", "" },
+    { 0x19, 6,  "Draw {D} tile per discarded snag", "" },
 };
 inline constexpr PerkLevelEntry PERK_9_LEVELS[] = {
-    { 3,  "Refills your current {H} to 75%",  "when your {H} reaches 0" },
-    { 6,  "Refills your current {H} to 100%", "when your {H} reaches 0" },
+    { 0x19, 3,  "Refills your current {H} to 75%",  "when your {H} reaches 0" },
+    { 0x19, 6,  "Refills your current {H} to 100%", "when your {H} reaches 0" },
 };
 inline constexpr PerkLevelEntry PERK_10_LEVELS[] = {
-    { 0,  "Discarding with a {H} tile while", "full {H} won't advance Nemesis" },
-    { 1,  "Discarding with a {H} tile",       "won't advance Nemesis" },
+    { 0x19, 0,  "Discarding with a {H} tile while", "full {H} won't advance Nemesis" },
+    { 0x19, 1,  "Discarding with a {H} tile",       "won't advance Nemesis" },
 };
 inline constexpr PerkLevelEntry PERK_11_LEVELS[] = {
-    { 4,  "Gain 1 {H} per turn while", "holding at least 2 {H} tiles" },
-    { 10, "Gain 2 {H} per turn while", "holding at least 2 {H} tiles" },
-    { 15, "Gain 3 {H} per turn while", "holding at least 2 {H} tiles" },
-    { 20, "Gain 4 {H} per turn while", "holding at least 2 {H} tiles" },
+    { 0x19, 4,  "Gain 1 {H} per turn while", "holding at least 2 {H} tiles" },
+    { 0x19, 10, "Gain 2 {H} per turn while", "holding at least 2 {H} tiles" },
+    { 0x19, 15, "Gain 3 {H} per turn while", "holding at least 2 {H} tiles" },
+    { 0x19, 20, "Gain 4 {H} per turn while", "holding at least 2 {H} tiles" },
 };
 inline constexpr PerkLevelEntry PERK_12_LEVELS[] = {
-    { 8,  "Stats increase by 2 on level up", "" },
-    { 15, "Stats increase by 3 on level up", "" },
+    { 0x19, 8,  "Stats increase by 2 on level up", "" },
+    { 0x19, 15, "Stats increase by 3 on level up", "" },
 };
 inline constexpr PerkLevelEntry PERK_13_LEVELS[] = {
-    { 4,  "Lowest stat increases by an", "extra +1 on level up" },
-    { 12, "Lowest stat increases by an", "extra +2 on level up" },
+    { 0x19, 4,  "Lowest stat increases by an", "extra +1 on level up" },
+    { 0x19, 12, "Lowest stat increases by an", "extra +2 on level up" },
 };
 inline constexpr PerkLevelEntry PERK_14_LEVELS[] = {
-    { 4,  "Can choose 2 stats or 2 perks", "on level up" },
+    { 0x19, 4,  "Can choose 2 stats or 2 perks", "on level up" },
 };
 inline constexpr PerkLevelEntry PERK_15_LEVELS[] = {
-    { 2,  "25% chance of drawing a",  "2 {C} tile instead of 1 {C}" },
-    { 6,  "50% chance of drawing a",  "2 {C} tile instead of 1 {C}" },
-    { 10, "75% chance of drawing a",  "2 {C} tile instead of 1 {C}" },
-    { 15, "100% chance of drawing a", "2 {C} tile instead of 1 {C}" },
+    { 0x19, 2,  "25% chance of drawing a",  "2 {C} tile instead of 1 {C}" },
+    { 0x19, 6,  "50% chance of drawing a",  "2 {C} tile instead of 1 {C}" },
+    { 0x19, 10, "75% chance of drawing a",  "2 {C} tile instead of 1 {C}" },
+    { 0x19, 15, "100% chance of drawing a", "2 {C} tile instead of 1 {C}" },
 };
 inline constexpr PerkLevelEntry PERK_16_LEVELS[] = {
-    { 1,  "{C} spots are closer together", "" },
+    { 0x19, 1,  "{C} spots are closer together", "" },
 };
 inline constexpr PerkLevelEntry PERK_17_LEVELS[] = {
-    { 6,  "Gain 1 {C} when defeating a", "non-zero {X} special snag" },
-    { 14, "Gain 2 {C} when defeating a", "non-zero {X} special snag" },
+    { 0x19, 6,  "Gain 1 {C} when defeating a", "non-zero {X} special snag" },
+    { 0x19, 14, "Gain 2 {C} when defeating a", "non-zero {X} special snag" },
 };
 inline constexpr PerkLevelEntry PERK_18_LEVELS[] = {
-    { 0,  "Can hold 1 event at a time",  "" },
-    { 3,  "Can hold 2 events at a time", "" },
-    { 7,  "Can hold 3 events at a time", "" },
-    { 12, "Can hold 4 events at a time", "" },
+    { 0x19, 0,  "Can hold 1 event at a time",  "" },
+    { 0x19, 3,  "Can hold 2 events at a time", "" },
+    { 0x19, 7,  "Can hold 3 events at a time", "" },
+    { 0x19, 12, "Can hold 4 events at a time", "" },
 };
+// PERK_19 / PERK_20 require Eventful (perkType 0x12); prerequisite 0x12 (FUN_100041aa4)
 inline constexpr PerkLevelEntry PERK_19_LEVELS[] = {
-    { 4,  "Choose from 4 events", "One event starts with 1 charge" },
+    { 0x12, 4,  "Choose from 4 events", "One event starts with 1 charge" },
 };
 inline constexpr PerkLevelEntry PERK_20_LEVELS[] = {
-    { 2,  "25% chance for events to",  "start with 1 charge" },
-    { 6,  "50% chance for events to",  "start with 1 charge" },
-    { 12, "100% chance for events to", "start with 1 charge" },
+    { 0x12, 2,  "25% chance for events to",  "start with 1 charge" },
+    { 0x12, 6,  "50% chance for events to",  "start with 1 charge" },
+    { 0x12, 12, "100% chance for events to", "start with 1 charge" },
 };
 inline constexpr PerkLevelEntry PERK_21_LEVELS[] = {
-    { 4,  "25% chance of +2 to primary",  "stat on item upgrade" },
-    { 8,  "75% chance of +2 to primary",  "stat on item upgrade" },
-    { 12, "100% chance of +2 to primary", "stat on item upgrade" },
+    { 0x19, 4,  "25% chance of +2 to primary",  "stat on item upgrade" },
+    { 0x19, 8,  "75% chance of +2 to primary",  "stat on item upgrade" },
+    { 0x19, 12, "100% chance of +2 to primary", "stat on item upgrade" },
 };
 inline constexpr PerkLevelEntry PERK_22_LEVELS[] = {
-    { 4,  "50% chance of 1 item ability",  "" },
-    { 8,  "75% chance of 1 item ability",  "25% chance of 2 item abilities" },
-    { 12, "100% chance of 1 item ability", "75% chance of 2 item abilities" },
+    { 0x19, 4,  "50% chance of 1 item ability",  "" },
+    { 0x19, 8,  "75% chance of 1 item ability",  "25% chance of 2 item abilities" },
+    { 0x19, 12, "100% chance of 1 item ability", "75% chance of 2 item abilities" },
 };
 inline constexpr PerkLevelEntry PERK_23_LEVELS[] = {
-    { 3,  "Choose from 4 items. One item", "gets +1 to secondary stat" },
+    { 0x19, 3,  "Choose from 4 items. One item", "gets +1 to secondary stat" },
 };
 
 // ---- top-level per-perk table ----

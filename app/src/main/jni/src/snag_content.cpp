@@ -162,24 +162,24 @@ void SnagContent::init(SnagKind kind_e, TileObject* tileObj, PlayerSystem* playe
         float hpScale;
 
         if (pattern == 0) {
-            // pattern 0: weak atk, slightly tougher def
-            fAtk    = baseStat * K1_PATTERN0_ATK_MUL;   // 0.7
-            fDef    = baseStat * K1_HALF;                // 1.5
+            // pattern 0: strong atk, weak def, normal hp
+            fAtk    = baseStat * K1_HALF;                // 1.5
+            fDef    = baseStat * K1_PATTERN0_ATK_MUL;    // 0.7
             hpScale = 1.0f;                              // hp = baseStat
         } else if (pattern == 1) {
-            // pattern 1: doubled atk, slightly less hp
-            fAtk    = baseStat + baseStat;               // 2x
-            fDef    = baseStat;                          // 1x
+            // pattern 1: normal atk, doubled def, slightly less hp
+            fAtk    = baseStat;                          // 1x
+            fDef    = baseStat + baseStat;               // 2x
             hpScale = K1_PATTERN1_HP_MUL;                // 0.9
         } else if (pattern == 2) {
-            // pattern 2: balanced atk, 1.5x def, 1x hp
+            // pattern 2: normal atk, 1.2x def, 1.5x hp
+            fAtk    = baseStat;                          // 1x
+            fDef    = baseStat * K1_PATTERN23_ATK_MUL;   // 1.2
+            hpScale = K1_HALF;                           // 1.5
+        } else {
+            // pattern 3: 1.2x atk, 1.5x def, 1.1x hp
             fAtk    = baseStat * K1_PATTERN23_ATK_MUL;   // 1.2
             fDef    = baseStat * K1_HALF;                // 1.5
-            hpScale = 1.0f;
-        } else {
-            // pattern 3: 1.5x atk, 1.2x def, 1.1x hp
-            fAtk    = baseStat * K1_HALF;                // 1.5
-            fDef    = baseStat * K1_PATTERN23_ATK_MUL;   // 1.2
             hpScale = K1_PATTERN3_HP_MUL;                // 1.1
         }
 
@@ -372,7 +372,7 @@ void SnagContent::initExplicit(uint32_t kind, int hp_, int atk_, int def_,
     atkDisplay.quad.setTexCoords(0.18164063f, 0.0f, 0.22851563f, 0.04492188f);
     atkDisplay.quad.setSize(0.075f, 0.071875f);
 
-    defDisplay.quad.setTexCoords(0.27978516f, 0.0f, 0.32324219f, 0.04492188f);
+    defDisplay.quad.setTexCoords(0.28027344f, 0.0f, 0.32324219f, 0.04492188f);
     defDisplay.quad.setSize(0.06875f, 0.071875f);
 
     // ---- ColorTint colors (identical to init) ----
@@ -512,12 +512,19 @@ constexpr float DEF_DISP_DX =  0.06718750f; // DAT_10005a338
 constexpr float HP_TINT_DX  = -0.00156250f; // DAT_10005a33c (also DEF tint Y offset)
 }
 
-void SnagContent::setPosition(float x, float y) {
-    // base sprite at the requested position.
-    baseQuad.posX = x;
-    baseQuad.posY = y;
+void SnagContent::setPosition(float x, float y, int skipLayout) {
+    // base sprite at the requested position. the binary passes flag 0 to the
+    // base call, so the main quad always snaps regardless of skipLayout.
+    MovableActor::setPosition(x, y, 0);
 
-    // 3 stat-display sub-Quads, positioned around the snag.
+    // spawn-in (skipLayout&1) leaves the stat displays where they are; they get
+    // laid out on the settle/move pass once the flag clears.
+    if ((skipLayout & 1) != 0) {
+        return;
+    }
+
+    // 3 stat-display sub-Quads, positioned around the snag (from the unsnapped
+    // x, y, matching the binary's read of param_2 rather than the snapped quad).
     hpDisplay.quad.posX  = x;
     hpDisplay.quad.posY  = y + HP_DISP_DY;
     atkDisplay.quad.posX = x + ATK_DISP_DX;
@@ -692,6 +699,8 @@ void SnagContent::sendToward(TileObject* target, bool reparent) {
 
     TileObject* oldParent = tileParent;
 
+    // defensive null guard; the binary derefs oldParent unconditionally, but
+    // it's non-null on every real call path (snag came from a live tile).
     if (oldParent) {
         oldParent->snagContent = nullptr;
     }
@@ -816,7 +825,14 @@ void SnagContent::resolveCombatDelta(PlayerSystem* player,
         return;
     }
 
-    // default + type==7 (= "Judgement"): atk damped if posDelta>0; def halved.
+    if (type == 7) {
+        // Judgement: def halved only, atk untouched. the binary jumps straight
+        // to the def>>1 at 0x10003e3a0, skipping the posDelta/atk damp.
+        *defInOut = *defInOut >> 1;
+        return;
+    }
+
+    // default: atk damped if posDelta>0; def halved.
     if (posDelta > 0) {
         *atkInOut = (*atkInOut * 2 + 2) / 3;
     }

@@ -154,9 +154,8 @@ public:
     TextItem textCenter;           // +0xD00
     TextItem textLines[3];         // +0xD88..+0xF1F
 
-    // hasTitle is consumed by layoutAndFade only; it tweaks the layout
-    // metrics based on whether the populator passed a non-null title.
-    // it does not gate any draw call (the binary's draw() ignores it).
+    // hasTitle tweaks the layoutAndFade metrics based on whether the populator
+    // passed a non-null title, and gates the textCenter (title) draw in draw().
     bool hasTitle;                 // +0xF20  init = 1
     uint8_t padF21[7];             // +0xF21
 

@@ -112,6 +112,20 @@ public:
     float&      touchX()        { return touchX_; }
     float&      touchY()        { return touchY_; }
     float&      scaleFactor()   { return scaleFactor_; }
+    Quad&       letterboxQuad1() { return letterboxQuad1_; }
+    Quad&       letterboxQuad2() { return letterboxQuad2_; }
+
+    // the 5 per-slot save scratch buffers sit at non-contiguous offsets, so
+    // they're separate members; this maps a slot index to its buffer.
+    std::vector<uint8_t>& saveScratch(int slot) {
+        switch (slot) {
+            case 0:  return saveSlot0Scratch_;
+            case 1:  return saveSlot1Scratch_;
+            case 2:  return saveSlot2Scratch_;
+            case 3:  return saveSlot3Scratch_;
+            default: return saveSlot4Scratch_;
+        }
+    }
 
     // achievement state at +0x42F8. not audio: the only ported method,
     // beginSession, is called from initLevel and looks like a music-mode
@@ -121,7 +135,7 @@ public:
     // title-screen subsystem at +0x4460 (embedded inline; the binary's
     // GameBoard typename here is `TitleMenu` since it owns the title +
     // character + difficulty UI before the gameplay GameBoard takes over).
-    TitleMenu&  board()         { return titleMenu_; }
+    TitleMenu&  titleMenu()         { return titleMenu_; }
 
     // world / character-select subsystem at +0x16DB0.
     World&      world()         { return world_; }
@@ -135,11 +149,11 @@ public:
     ScorePanel*& scorePanel()   { return scorePanel_; }
 
     // between-runs shop backend at +0x19130. holds the persistent keys
-    // balance + the deferred unlock-row UI.
+    // balance + the 3-row unlock UI.
     Shop&            shop()             { return shop_; }
 
     // leaderboard viewer header at +0x1CB18. T=8 set site reads its
-    // closeRequested flag. UI fields deferred.
+    // closeRequested flag. full per-difficulty rank UI is ported.
     LeaderboardMenu& leaderboardMenu()  { return leaderboardMenu_; }
 
     // per-difficulty stat-history at game+0x234C0 (= LeaderboardMenu+0x69A8).
@@ -147,7 +161,7 @@ public:
     ScoreHistory&    scoreHistory()     { return scoreHistory_; }
 
     // achievements page at +0x23508. T=9 set site reads its closeRequested
-    // flag. 50-tile grid deferred.
+    // flag.
     AchievementsMenu& achievementsMenu(){ return achievementsMenu_; }
 
     // post-overlay transition target at +0x2E170. set by every transition
@@ -206,23 +220,9 @@ public:
     // typed accessors for the 3 BMFont glyph tables.
     BMFontTable& bmfontTable(int idx) { return bmfontTables_[idx]; }
 
-    // raw pointer for handing to TextItem (which expects an `int*` to the
-    // table base; the first 4 bytes are the textureIndex used by draw()).
-    int* bmfontTablePtr(int idx) {
-        return reinterpret_cast<int*>(&bmfontTables_[idx]);
-    }
-
-    // raw byte access for offsets still inside an unclassified gap.
-    // returns a pointer relative to the FIRST typed binary field
-    // (gameState_), so `at(0)` is the start of the binary state and
-    // `at(0x36C8)` aliases scaleFactor_ exactly as before.
-    uint8_t* at(size_t offset) {
-        return reinterpret_cast<uint8_t*>(&gameState_) + offset;
-    }
-    template<typename T>
-    T& field(size_t byteOffset) {
-        return *reinterpret_cast<T*>(reinterpret_cast<uint8_t*>(&gameState_)
-                                     + byteOffset);
+    // glyph-table pointer for handing to TextItem (stored in its glyphTablePtr).
+    const BMFontTable* bmfontTablePtr(int idx) {
+        return &bmfontTables_[idx];
     }
 
 private:
@@ -296,13 +296,13 @@ private:
     ScorePanel*  scorePanel_;            // +0x19128
 
     // ---- between-runs shop backend ----
-    // persistent keys balance + (deferred F7) unlock-row UI state. fills
-    // exactly the gap from +0x19130 up to the next subsystem at +0x1CB18.
+    // persistent keys balance + the 3-row unlock UI state. fills exactly the
+    // gap from +0x19130 up to the next subsystem at +0x1CB18.
     Shop             shop_;                  // +0x19130..+0x1CB18 (0x39E8 bytes)
 
     // ---- leaderboard viewer (header region) ----
-    // visible / closeRequested / dirty flags + (deferred) per-difficulty
-    // TextItem rows. ends EXACTLY where ScoreHistory begins.
+    // visible / closeRequested / dirty flags + the per-difficulty TextItem
+    // rows. ends EXACTLY where ScoreHistory begins.
     LeaderboardMenu  leaderboardMenu_;       // +0x1CB18..+0x234C0 (0x69A8 bytes)
 
     // ---- per-difficulty stat-history lists ----
@@ -426,11 +426,8 @@ private:
 
 public:
     // ---- public utility members (NOT part of the binary struct) ----
-    // declared AFTER the private binary-layout fields so that
-    // (uint8_t*)&gameState_, the start-of-binary-data anchor used by at()
-    // and field<T>() equals (uint8_t*)this. textures and the utility
-    // subsystems trail the binary region; they're extracted for cleaner
-    // code and don't need fixed offsets.
+    // textures and the utility subsystems trail the binary region; they're
+    // extracted for cleaner code and don't need fixed offsets.
 
     // the texture ids loaded for this game.
     GLuint           textures[GAME_NUM_TEXTURES];

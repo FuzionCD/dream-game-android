@@ -98,7 +98,7 @@ static void layoutStatBars(GameplayHUD* h) {
     // anchored at the center of the overflow bar (= fill bar's top when
     // overflow is 0) less half its own height, so the tip sits flush against
     // the health bar no matter which segment is on top.
-    h->healthBarTip.quad.posY = (h->healthBarOverflow.quad.posY + h->healthBarOverflow.quad.height * 0.5f)
+    h->healthBarTip.quad.posY = (h->healthBarOverflow.quad.posY - h->healthBarOverflow.quad.height * 0.5f)
                                 + h->healthBarTip.quad.height * 0.5f;
 }
 
@@ -196,6 +196,7 @@ void GameplayHUD::init(void* parentPtr) {
     overlayProgress = 0.0f;
     pulseTimer      = 0.0f;
     overlayState    = 0;
+    touchReEntryGuard = 0;  // binary clears both bytes via strh at 0x10000b308
     playSoundNextFill = true;
     std::memset(pad1E2B, 0, sizeof(pad1E2B));
 
@@ -430,12 +431,16 @@ void GameplayHUD::update(float dt) {
         constexpr float RATE_DOWN = -1.0f;  // DAT_100059d58 (taking damage)
         constexpr float RATE_UP   =  1.0f;  // DAT_100059d5c (healing)
 
-        float rate = (currentHealthRatio < targetHealthRatio) ? RATE_UP : RATE_DOWN;
-        float advanced = currentHealthRatio + dt * 0.5f * rate;
+        float original = currentHealthRatio;
+        float rate = (original < targetHealthRatio) ? RATE_UP : RATE_DOWN;
+        float advanced = original + dt * 0.5f * rate;
         currentHealthRatio = advanced;
 
-        // clamp to target on overshoot
-        if (currentHealthRatio < targetHealthRatio) {
+        // clamp to target on overshoot. the outer branch keys on the ORIGINAL
+        // pre-update ratio (fcmp at 0x10000c22c, reused by b.pl at 0x10000c258),
+        // not the just-stored advanced value, so an overshoot in either
+        // direction snaps to target.
+        if (original < targetHealthRatio) {
             if (advanced >= targetHealthRatio) {
                 currentHealthRatio = targetHealthRatio;
             }
@@ -691,6 +696,7 @@ void GameplayHUD::setHealth(int value, int holdRatio) {
 
     float vf = (float)currentHealth;
     float df = (float)maxHealth;
+    // defensive divide-by-zero guard (the binary divides unconditionally).
     targetHealthRatio = (df != 0.0f) ? (vf / df) : 0.0f;
 
     // when holdRatio bit 0 is clear, snap currentHealthRatio to target so the
@@ -708,6 +714,7 @@ void GameplayHUD::setMaxHealth(int value) {
     maxHealth = value;
     float vf = (float)currentHealth;
     float df = (float)value;
+    // defensive divide-by-zero guard (the binary divides unconditionally).
     float ratio = (df != 0.0f) ? (vf / df) : 0.0f;
     targetHealthRatio  = ratio;
     currentHealthRatio = ratio;
@@ -1205,11 +1212,14 @@ void GameplayHUD::swapAtkDefDisplays(int newAtkValue, int newDefValue) {
     constexpr float TINT_Y       = 0.046875f;    // DAT_100059cd4 (resting Y)
     constexpr float TINT_X_RIGHT = 0.6125f;      // DAT_100059cd0 (resting DEF X)
 
-    // step 1: set each tint to its new value at its resting position
-    tintAttack.setNumber(newAtkValue, 1, 1);
+    // step 1: set each tint at its resting position. the binary crosses the
+    // value bindings: tintAttack shows the DEF value (param_3) and tintDefence
+    // shows the ATK value (param_2), so the post-swap slide reveals each stat
+    // arriving from the other side.
+    tintAttack.setNumber(newDefValue, 1, 1);
     tintAttack.setPosition(TINT_X_LEFT, TINT_Y, 1);
 
-    tintDefence.setNumber(newDefValue, 1, 1);
+    tintDefence.setNumber(newAtkValue, 1, 1);
     tintDefence.setPosition(TINT_X_RIGHT, TINT_Y, 1);
 
     // step 2: swap the two tints' current pos so the slide starts on the
@@ -1256,7 +1266,7 @@ void GameplayHUD::setConditionalIcon(ConditionalIconState state) {
             break;
         case ConditionalIconState::ConfirmDiscard:
             u0 = 0.28222656f; v0 = 0.69531250f;
-            u1 = 0.34960938f; v1 = 0.75292969f;
+            u1 = 0.34863281f; v1 = 0.75292969f;   // u1 binary 0x3eb28000
             w  = 0.10625f;    h  = 0.09218750f;
             break;
     }
@@ -1403,7 +1413,7 @@ void GameplayHUD::addEventSlot(EventSlot* slot) {
     constexpr float TRAY_X_BASE    = 65.5f;          // DAT_100059d40
     constexpr float TRAY_X_DIVISOR = 640.0f;         // DAT_100059d44
     constexpr float INSTALL_Y      = 0.0375f;        // = 24/640
-    constexpr float RESTING_Y      = 0.193359375f;   // final tray Y
+    constexpr float RESTING_Y      = 124.0f / 640.0f;   // final tray Y (124/640, binary 0x3e466666)
     constexpr float TRAY_X_STRIDE  = 127.0f;
 
     for (int i = 0; i < 4; ++i) {
@@ -1425,7 +1435,11 @@ void GameplayHUD::addEventSlot(EventSlot* slot) {
             const float startXY[2] = { eventTray[i].currentX, eventTray[i].currentY };
             slot->setPosition(startXY);
             slot->setAlpha(0xFF);
-            eventTray[i].progress = 0.0f;    // animation just started
+            // binary's str xzr at install clears both progress (+0x18) and
+            // shiftDelay (+0x1C); a stale shiftDelay left by a prior compaction
+            // would otherwise delay this reused slot's slide-in.
+            eventTray[i].progress   = 0.0f;
+            eventTray[i].shiftDelay = 0.0f;
             return;
         }
     }
@@ -1457,7 +1471,7 @@ void GameplayHUD::removeEventSlot(EventSlot* slot, bool compact) {
     constexpr float TRAY_X_DIVISOR   = 640.0f;         // DAT_100059d4c
     constexpr float SHIFT_STAGGER    = 0.1f;           // DAT_100059d50 (per-shifted-slot delay)
     constexpr float ANIM_RISE_Y      = -0.15625f;      // = -100/640 (rise above bar)
-    constexpr float RESTING_Y        = 0.193359375f;   // final tray Y
+    constexpr float RESTING_Y        = 124.0f / 640.0f;   // final tray Y (124/640, binary 0x3e466666)
     constexpr float SHIFT_X_STRIDE   = 127.0f;         // per-slot X spacing for shift target
 
     // binary head: drop the just-released back-pointer if it still
@@ -1582,10 +1596,10 @@ int GameplayHUD::queryReleaseTouch() {
 
         // header-zone gate: header hit-tests only fire when touchY is in
         // the top of the screen. binary reads Game+0xC (= touchY in our
-        // typed Game) and compares to DAT_100059d30 = 0.1172 (= 75/640).
+        // typed Game) and compares to DAT_100059d30 = 0x3df00000 (= 75/640).
         // taps below that virtual-Y fall through to the largeButtonFrame +
         // EventSlot tests.
-        constexpr float HEADER_ZONE_BOTTOM = 0.1172f;  // DAT_100059d30
+        constexpr float HEADER_ZONE_BOTTOM = 75.0f / 640.0f;  // DAT_100059d30 = 0x3df00000
         float touchYNorm = g->touchY();
         const float* touchXY = &g->touchX();
 

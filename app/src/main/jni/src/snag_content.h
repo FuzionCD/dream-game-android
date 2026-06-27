@@ -116,7 +116,9 @@ public:
     // the per-stat offsets from DAT_10005a32c..a344. called by TileObject::
     // setPosition when the snag's parent tile moves, and by MovableActor::
     // update each frame during sendToward / triggerBumpAnim animation.
-    void setPosition(float x, float y) override;
+    // skipLayout&1 (spawn-in stage) suppresses the stat-display relayout; the
+    // main quad still snaps because the binary passes flag 0 to the base call.
+    void setPosition(float x, float y, int skipLayout = 0) override;
 
     // FUN_10003da34 (vtable[3] override), snag-specific per-frame logic on
     // top of MovableActor's 4-stage base body. two extras:

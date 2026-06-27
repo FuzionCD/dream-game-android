@@ -59,10 +59,10 @@ static constexpr float kForfeitButtonAnchorY  = 0.2421875f;   // immediate in bo
 
 // posX/posY for the 3 decorative icons of the popup.
 static constexpr float kForfeitIcon0PosX = 0.32499998f;
-static constexpr float kForfeitIcon0PosY = 0.06749999f;
-static constexpr float kForfeitIcon1PosX = 0.31640625f;
+static constexpr float kForfeitIcon0PosY = 0.0671875f;   // IEEE 0x3d89999a (forfeitTitle+0xA8 high32)
+static constexpr float kForfeitIcon1PosX = 0.315625f;    // IEEE 0x3ea1999a (warnLine1+0xA8 low32)
 static constexpr float kForfeitIcon1PosY = 0.15625000f;
-static constexpr float kForfeitIcon2PosX = 0.31640625f;
+static constexpr float kForfeitIcon2PosX = 0.315625f;    // IEEE 0x3ea1999a (warnLine2+0xA8 low32)
 static constexpr float kForfeitIcon2PosY = 0.20312500f;
 
 // ----------------------------------------------------------------------
@@ -381,7 +381,7 @@ void PauseMenu::update(float dt, float touchInput) {
 
         // binary's chain (FUN_10002f1d0 tail):
         //   if (visible && !secondaryVisible)         return;   // parent closing
-        //   if (forfeitConfirmPanel.visible)          return;   // popup still up
+        //   if (!forfeitConfirmPanel.visible)         return;   // popup already closed
         //   if (forfeitConfirmPanel.secondaryVisible) return;   // popup opening
         //   if (!forfeitConfirmPanel.confirmResult)   return;   // No (cancel)
         //   scoreRequest = 1;
@@ -390,7 +390,7 @@ void PauseMenu::update(float dt, float touchInput) {
             return;
         }
 
-        if (forfeitConfirmPanel.visible) {
+        if (!forfeitConfirmPanel.visible) {
             return;
         }
 
@@ -509,6 +509,11 @@ void PauseMenu::update(float dt, float touchInput) {
                 // wipes the hint-state region so hints re-fire for the new
                 // mode the next time the player resumes.
                 tutorialFlag ^= 1;
+
+                // un-dim both standalone badges (press-time dim at lines
+                // 456-457 restored to white). FUN_10002f1d0 0x10002f404-f424.
+                tutorialUnchecked.setColor(0xFF, 0xFF, 0xFF, 0xFF);
+                tutorialChecked.setColor(0xFF, 0xFF, 0xFF, 0xFF);
             } else if (tabIdx == 2) {
                 // Forfeit: pop up the "Forfeit Run?" confirmation.
                 forfeitConfirmPanel.open();

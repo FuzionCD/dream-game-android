@@ -143,7 +143,7 @@ void DialogPanel::init() {
     // populated by Game::loadFonts at startup. typed accessor returns the
     // int* expected by TextItem (textureIndex at offset 0).
     Game* g = getGame();
-    int*  glyphSrc = g ? g->bmfontTablePtr(1) : nullptr;
+    const BMFontTable* glyphSrc = g ? g->bmfontTablePtr(1) : nullptr;
 
     for (int i = 0; i < 3; i++) {
         textLines[i].glyphTablePtr = glyphSrc;

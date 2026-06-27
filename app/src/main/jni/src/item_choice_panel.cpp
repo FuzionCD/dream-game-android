@@ -320,7 +320,9 @@ void ItemChoicePanel::pickItemSet(PlayerSystem* playerSystem,
         slotTypes.push_back(t);
 
         if (t == extraSlotType) {
-            extraSlotPos = (int)slotTypes.size() - 1;
+            // count after the first push = index the duplicate will occupy
+            // (FUN_100035218: lsr x25,x9,#0x2 reads size including first copy).
+            extraSlotPos = (int)slotTypes.size();
             slotTypes.push_back(t);
         }
     }

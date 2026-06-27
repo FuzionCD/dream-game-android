@@ -86,14 +86,9 @@ void TileObject::init() {
     // its own ctor (which leaves +0x210/+0x218/+0x220 = 0).
     new (&trackedContent) std::vector<SnagContent*>();
 
-    // sentinel-style decoration list at +0x228 (prev) / +0x230 (next). when
-    // empty, both pointers self-alias to &decorListPrev (= the prev pointer
-    // slot itself, which is also the sentinel address). this matches the
-    // binary's `param_1[0x45] = param_1 + 0x45;` / `param_1[0x46] = param_1 + 0x45;`
-    // both aliasing &this+0x228.
-    decorListPrev      = reinterpret_cast<TileDecoration*>(&decorListPrev);
-    decorListNext      = reinterpret_cast<TileDecoration*>(&decorListPrev);
-    decorCount         = 0;          // +0x238
+    // decoration list at +0x228. same memset situation as trackedContent, so
+    // placement-new a fresh empty std::list to reconstruct the libc++ head.
+    new (&decorations) std::list<DecorationValue>();
     rotationAnimT      = 0.0f;       // +0x240
     rotationAnimActive = false;      // +0x244
     std::memset(pad245, 0, sizeof(pad245));
@@ -170,14 +165,12 @@ void TileObject::draw(bool showContent, bool drawTints) {
     }
 
     // decoration walk: matches FUN_100012278's tail loop.
-    TileDecoration* sentinel = reinterpret_cast<TileDecoration*>(&decorListPrev);
-
-    for (TileDecoration* iter = decorListNext; iter != sentinel; iter = iter->next) {
+    for (DecorationValue& d : decorations) {
         bindTexture(8);
-        iter->iconSubQuad.draw();
+        d.iconSubQuad.draw();
 
-        if (iter->value > 0) {
-            iter->colorTint.draw();
+        if (d.value > 0) {
+            d.colorTint.draw();
         }
     }
 
@@ -196,11 +189,10 @@ void TileObject::draw(bool showContent, bool drawTints) {
 // SnagContent via its vtable[8] (full draw: sprite + 3 stat displays +
 // 3 tints when drawTints is set).
 void TileObject::drawContent(bool drawTints) {
-    TileDecoration* sentinel = reinterpret_cast<TileDecoration*>(&decorListPrev);
 
-    for (TileDecoration* iter = decorListNext; iter != sentinel; iter = iter->next) {
+    for (const DecorationValue& d : decorations) {
 
-        if (!iter->suppressed && iter->kind == 1) {
+        if (!d.suppressed && d.kind == 1) {
             return;   // Darkness active, content stays hidden
         }
     }
@@ -341,46 +333,36 @@ void TileObject::update(float dt) {
     // an empty decoration list skips this loop body entirely.
     constexpr float DECOR_ALPHA_END = 255.0f;  // DAT_100059e48
 
-    {
-        TileDecoration* sentinel = reinterpret_cast<TileDecoration*>(&decorListPrev);
-        TileDecoration* iter     = decorListNext;
+    for (auto it = decorations.begin(); it != decorations.end(); ) {
+        float t = it->alphaT;
 
-        while (iter != sentinel) {
-            float t = iter->alphaT;
-
-            if (t >= 1.0f) {
-                iter = iter->next;
-                continue;
-            }
-
-            t += dt + dt;
-
-            if (t > 1.0f) {
-                t = 1.0f;
-            }
-
-            iter->alphaT = t;
-            bool fadingIn = !iter->suppressed;
-            float startA  = fadingIn ? 0.0f             : DECOR_ALPHA_END;
-            float endA    = fadingIn ? DECOR_ALPHA_END  : 0.0f;
-            uint8_t a     = static_cast<uint8_t>(t * endA + (1.0f - t) * startA);
-            iter->iconSubQuad.setAlpha(a);
-            iter->colorTint.setAlpha(a);
-
-            if (!iter->suppressed || t < 1.0f) {
-                iter = iter->next;
-                continue;
-            }
-
-            // suppressed + animation complete -> unlink and free this node.
-            // matches FUN_100014064's "remove plVar5 from list, return next".
-            TileDecoration* nextIter = iter->next;
-            iter->prev->next = nextIter;
-            nextIter->prev   = iter->prev;
-            decorCount--;
-            delete iter;
-            iter = nextIter;
+        if (t >= 1.0f) {
+            ++it;
+            continue;
         }
+
+        t += dt + dt;
+
+        if (t > 1.0f) {
+            t = 1.0f;
+        }
+
+        it->alphaT = t;
+        bool fadingIn = !it->suppressed;
+        float startA  = fadingIn ? 0.0f             : DECOR_ALPHA_END;
+        float endA    = fadingIn ? DECOR_ALPHA_END  : 0.0f;
+        uint8_t a     = static_cast<uint8_t>(t * endA + (1.0f - t) * startA);
+        it->iconSubQuad.setAlpha(a);
+        it->colorTint.setAlpha(a);
+
+        if (!it->suppressed || t < 1.0f) {
+            ++it;
+            continue;
+        }
+
+        // suppressed + animation complete -> drop this node (erase returns the
+        // next iterator). matches FUN_100014064's "remove + return next".
+        it = decorations.erase(it);
     }
 }
 
@@ -437,18 +419,13 @@ int TileObject::getExitCount() const {
     return kGridPoolTable[gridLayout][gridIdx].exitCount;
 }
 
-// reconstructed from Ghidra FUN_100012470. sentinel-style walk of the
-// decoration list at +0x228..+0x238. matches when a node has the requested
-// `kind` (+0x10) and its +0xF4 flag is 0.
+// reconstructed from Ghidra FUN_100012470. walks the decoration list, matching
+// when a node has the requested `kind` and its suppressed flag is 0.
 bool TileObject::hasActiveDecorationOfKind(int kind) const {
-    const TileDecoration* sentinel =
-        reinterpret_cast<const TileDecoration*>(&decorListPrev);
 
-    for (const TileDecoration* d = decorListNext;
-         d && d != sentinel;
-         d = d->next) {
+    for (const DecorationValue& d : decorations) {
 
-        if (!d->suppressed && d->kind == kind) {
+        if (!d.suppressed && d.kind == kind) {
             return true;
         }
     }
@@ -460,15 +437,11 @@ bool TileObject::hasActiveDecorationOfKind(int kind) const {
 // hasActiveDecorationOfKind but returns the matched decoration's `value`
 // (+0xF8) instead of bool.
 int TileObject::decorationValueOfKind(int kind) const {
-    const TileDecoration* sentinel =
-        reinterpret_cast<const TileDecoration*>(&decorListPrev);
 
-    for (const TileDecoration* d = decorListNext;
-         d && d != sentinel;
-         d = d->next) {
+    for (const DecorationValue& d : decorations) {
 
-        if (!d->suppressed && d->kind == kind) {
-            return d->value;
+        if (!d.suppressed && d.kind == kind) {
+            return d.value;
         }
     }
 
@@ -544,16 +517,12 @@ void TileObject::setRotationDirect(float degrees) {
 // the content-reveal animation. the decoration node stays in the list; only
 // the suppressed flag flips and alphaT resets.
 void TileObject::suppressDecorationsOfKind(int kind) {
-    TileDecoration* sentinel =
-        reinterpret_cast<TileDecoration*>(&decorListPrev);
 
-    for (TileDecoration* d = decorListNext;
-         d && d != sentinel;
-         d = d->next) {
+    for (DecorationValue& d : decorations) {
 
-        if (!d->suppressed && d->kind == kind) {
-            d->suppressed = true;
-            d->alphaT     = 0.0f;
+        if (!d.suppressed && d.kind == kind) {
+            d.suppressed = true;
+            d.alphaT     = 0.0f;
         }
     }
 }
@@ -657,8 +626,7 @@ void TileObject::setHexUVs(int _gridLayout, int _gridIdx, int mirror, int rotati
 //     mirror which is iconQuad.posX/posY since iconQuad starts at +0xF8 and
 //     Quad.posX is at +0xA8, so 0xF8 + 0xA8 = 0x1A0).
 //   - decoration list nodes' attachment positions + their ColorTints
-//   - content / snagContent's vtable[4] (their own setPosition; deferred
-//     until those classes land).
+//   - content / snagContent's vtable[4] (their own setPosition).
 void TileObject::setPosition(float x, float y) {
     mainQuad.posX = x;
     mainQuad.posY = y;
@@ -677,26 +645,22 @@ void TileObject::setPosition(float x, float y) {
     iconQuad.posX = mainQuad.posX + ICON_POS_OFFSET;
     iconQuad.posY = mainQuad.posY + ICON_POS_OFFSET;
 
-    // walk the decoration list (sentinel = &decorListPrev, the prev-pointer
-    // slot itself acts as the list's sentinel address). for each node, mirror
-    // our pos into iconSubQuad.posX/posY (no subOffset; the icon anchors at
-    // the tile center; addVertexOffset in pushDecoration carries any visual
-    // offset baked into the vertex layout). subOffsetX/Y are applied only to
-    // the digit ColorTint so the number sits relative to the icon.
-    TileDecoration* sentinel = reinterpret_cast<TileDecoration*>(&decorListPrev);
-
-    for (TileDecoration* iter = decorListNext; iter != sentinel; iter = iter->next) {
+    // walk the decoration list. for each node, mirror our pos into
+    // iconSubQuad.posX/posY (no subOffset; the icon anchors at the tile center;
+    // addVertexOffset in pushDecoration carries any visual offset baked into the
+    // vertex layout). subOffsetX/Y are applied only to the digit ColorTint so
+    // the number sits relative to the icon.
+    for (DecorationValue& d : decorations) {
         // iconSubQuad anchors at the tile center; its vertex offsets
         // (set in pushDecoration) carry whatever spatial offset the kind
         // needs. subOffsetX/Y only shift the digit ColorTint relative to
         // the icon anchor (kind=2 alone uses non-zero subOffset).
-        iter->iconSubQuad.posX = mainQuad.posX;
-        iter->iconSubQuad.posY = mainQuad.posY;
-        // FUN_10003c870: propagate position into the kind=2 ColorTint at
-        // node+0x100. mode 1 = pixel-snap delta (matches FUN_10003c870
-        // param_3=1 in FUN_100012c34's decoration walk).
-        iter->colorTint.setPosition(mainQuad.posX + iter->subOffsetX,
-                                    mainQuad.posY + iter->subOffsetY, 1);
+        d.iconSubQuad.posX = mainQuad.posX;
+        d.iconSubQuad.posY = mainQuad.posY;
+        // FUN_10003c870: propagate position into the kind=2 ColorTint. mode 1 =
+        // pixel-snap delta (matches FUN_10003c870 param_3=1 in the binary walk).
+        d.colorTint.setPosition(mainQuad.posX + d.subOffsetX,
+                                mainQuad.posY + d.subOffsetY, 1);
     }
 
     // delegate to content / snagContent's setPosition (= their vtable[4]
@@ -1066,102 +1030,80 @@ void TileObject::pushDecoration(int kind, int value, int flag) {
         }
     }
 
-    // 2. sorted-list scan. mirror binary's plVar7/plVar8 dance:
-    //    plVar7 (= prevSlotNode) tracks the node we'd insert before in
-    //    iteration order. for the for-loop body's "kind < param_2" path the
-    //    binary resets plVar7 to the sentinel; on a successful "kind > "
-    //    exit it ends up at the node-with-greater-kind.
-    TileDecoration* sentinel       = reinterpret_cast<TileDecoration*>(&decorListPrev);
-    TileDecoration* iter           = decorListNext;            // sentinel.next
-    TileDecoration* prevSlotNode   = iter;                      // initial plVar7 = plVar8
+    // 2. sorted-list scan: find the first node whose kind is >= the new kind
+    //    (the list stays sorted ascending, one node per kind).
+    auto it = decorations.begin();
 
-    while (iter != sentinel) {
-        prevSlotNode = iter;                                   // for-test side-effect
-        if (iter->kind > kind) {
-            break;                                             // insert before iter
-        }
-
-        if (iter->kind == kind) {
-            // 3. existing-node update path.
-            if (iter->suppressed) {
-                iter->suppressed = false;
-                iter->alphaT     = 1.0f - iter->alphaT;        // mirror progress
-            }
-
-            if (kind != 2) {
-                return;                                        // kind 0 / 1: just toggled
-            }
-
-            // kind 2: bump value, redraw digits, sync ColorTint position.
-            iter->value += value;
-            iter->colorTint.setNumber(iter->value, 0, 1);
-            iter->colorTint.setPosition(iter->iconSubQuad.posX + iter->subOffsetX,
-                                        iter->iconSubQuad.posY + iter->subOffsetY,
-                                        1);
-            return;
-        }
-
-        prevSlotNode = sentinel;                               // matches body's plVar7 = plVar4
-        iter = iter->next;
+    while (it != decorations.end() && it->kind < kind) {
+        ++it;
     }
 
-    // 4. allocate new node + link it. mirrors FUN_1000140b8 in our typed model:
-    //    new->prev = old node at prevSlotNode->prev; that old node's next
-    //    becomes new; prevSlotNode->prev = new; new->next = prevSlotNode.
-    //    binary stores the slot address in new->next; in our typed C++ that
-    //    is just the prevSlotNode itself (which is the address of its own
-    //    +0 field for sentinel-embedded fake nodes).
-    TileDecoration* newNode = new TileDecoration();
-    TileDecoration* oldHead = prevSlotNode->prev;
+    // 3. existing-node update path (a node of this kind already exists).
+    if (it != decorations.end() && it->kind == kind) {
 
-    newNode->prev    = oldHead;
-    oldHead->next    = newNode;
-    prevSlotNode->prev = newNode;
-    newNode->next    = prevSlotNode;
-    decorCount      += 1;
+        if (it->suppressed) {
+            it->suppressed = false;
+            it->alphaT     = 1.0f - it->alphaT;            // mirror progress
+        }
 
-    // 5. baseline field init (binary writes after _bzero(0x130) of the
-    //    template + alloc-and-memcpy).
-    newNode->kind       = kind;
-    newNode->alphaT     = 0.0f;
-    newNode->suppressed = false;
-    newNode->iconSubQuad.setAlpha(0);
-    // copy 8 bytes (mainQuad.posX/posY) from tile to new node's iconSubQuad.
-    newNode->iconSubQuad.posX = mainQuad.posX;
-    newNode->iconSubQuad.posY = mainQuad.posY;
-    newNode->colorTint.init();
-    newNode->colorTint.setAlpha(0);
-    newNode->value      = 0;
+        if (kind != 2) {
+            return;                                        // kind 0 / 1: just toggled
+        }
+
+        // kind 2: bump value, redraw digits, sync ColorTint position.
+        it->value += value;
+        it->colorTint.setNumber(it->value, 0, 1);
+        it->colorTint.setPosition(it->iconSubQuad.posX + it->subOffsetX,
+                                  it->iconSubQuad.posY + it->subOffsetY,
+                                  1);
+        return;
+    }
+
+    // 4. insert a new node before `it` (keeps the list sorted by kind). emplace
+    //    value-initializes the DecorationValue: zeros the scalars and runs the
+    //    Quad / ColorTint sub-object constructors.
+    DecorationValue& d = *decorations.emplace(it);
+
+    // 5. baseline field init.
+    d.kind       = kind;
+    d.alphaT     = 0.0f;
+    d.suppressed = false;
+    d.iconSubQuad.setAlpha(0);
+    d.iconSubQuad.posX = mainQuad.posX;
+    d.iconSubQuad.posY = mainQuad.posY;
+    d.colorTint.init();
+    d.colorTint.setAlpha(0);
+    d.value      = 0;
 
     // 6. per-kind UV / size / vertex offset.
     if (kind == 0) {
         bool snagAlive = (snagContent != nullptr) && snagContent->visible;
         if (snagAlive || flag != 0) {
-            newNode->iconSubQuad.setTexCoords(0.3876953f, 0.0f, 0.499f, 0.127f);
+            d.iconSubQuad.setTexCoords(0.3876953f, 0.0f, 0.499f, 0.127f);
         } else {
-            newNode->iconSubQuad.setTexCoords(0.27539063f, 0.0f, 0.387f, 0.127f);
+            d.iconSubQuad.setTexCoords(0.27539063f, 0.0f, 0.387f, 0.127f);
         }
 
-        newNode->iconSubQuad.setSize(0.178125f, 0.203125f);
-        newNode->iconSubQuad.addVertexOffset(0.0f, 0.0f);
-        // subOffsetX/Y stay 0 (zero-init from `new`).
+        d.iconSubQuad.setSize(0.178125f, 0.203125f);
+        d.iconSubQuad.addVertexOffset(0.0f, 0.0f);
+        // subOffsetX/Y stay 0 (value-initialized by emplace).
     } else if (kind == 1) {
-        newNode->iconSubQuad.setTexCoords(0.5f, 0.0f, 0.574f, 0.0947f);
-        newNode->iconSubQuad.setSize(0.11875f, 0.1515625f);
-        newNode->iconSubQuad.addVertexOffset(0.00625f, 0.0078125f);
+        d.iconSubQuad.setTexCoords(0.5f, 0.0f, 0.574f, 0.0947f);
+        d.iconSubQuad.setSize(0.11875f, 0.1515625f);
+        d.iconSubQuad.addVertexOffset(0.00625f, 0.0078125f);
         // subOffsetX/Y stay 0.
     } else if (kind == 2) {
         // (the trailing "addVertexOffset for kind=0/1" branch doesn't run
         // for kind=2; binary gotos out via LAB_100013b34.)
-        newNode->iconSubQuad.setTexCoords(0.0f, 0.14257813f, 0.125f, 0.211f);
-        newNode->iconSubQuad.setSize(0.2f, 0.109375f);
-        newNode->iconSubQuad.addVertexOffset(0.0f, -0.09375f);
-        newNode->value      = value;
-        newNode->subOffsetX = 0.0f;
-        newNode->subOffsetY = -0.0906f;          // not the -0.09375 addVertexOffset above
-        newNode->colorTint.setNumber(value, 0, 1);
-        newNode->colorTint.setPosition(newNode->iconSubQuad.posX + newNode->subOffsetX,
-                                       newNode->iconSubQuad.posY + newNode->subOffsetY,
+        d.iconSubQuad.setTexCoords(0.0f, 0.14257813f, 0.125f, 0.211f);
+        d.iconSubQuad.setSize(0.2f, 0.109375f);
+        d.iconSubQuad.addVertexOffset(0.0f, -0.09375f);
+        d.value      = value;
+        d.subOffsetX = 0.0f;
+        d.subOffsetY = -0.0906f;          // not the -0.09375 addVertexOffset above
+        d.colorTint.setNumber(value, 0, 1);
+        d.colorTint.setPosition(d.iconSubQuad.posX + d.subOffsetX,
+                                       d.iconSubQuad.posY + d.subOffsetY,
                                        1);
     }
     // kind not in {0, 1, 2}: no per-kind UV/size setup. matches binary's

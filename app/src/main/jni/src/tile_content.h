@@ -111,8 +111,9 @@ public:
     // per-class position offset (DAT_100059ec4 = 0.0015625 / DAT_100059ec8
     // = 0.003125), writes the adjusted (x, y) to baseQuad, then repositions
     // the embedded colorTint based on the per-type 1-digit / 2-digit
-    // magnitude offset (FUN_100014a98).
-    void setPosition(float x, float y) override;
+    // magnitude offset (FUN_100014a98). the binary ignores the skipLayout flag
+    // here: it always snaps and always repositions the tint.
+    void setPosition(float x, float y, int skipLayout = 0) override;
 
     // FUN_100014b24, TileContent's vtable[5] override. propagates alpha
     // onto baseQuad and the embedded magnitude ColorTint at +0x140 so the

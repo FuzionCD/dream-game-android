@@ -5,6 +5,7 @@
 #include "tile_content.h"
 #include <cstddef>
 #include <cstdint>
+#include <list>
 #include <vector>
 
 class TileContent;
@@ -112,30 +113,16 @@ class GameBoard;
 //                                                tracks 0x498-byte allocations
 //                                                so they don't leak when
 //                                                transformToSnag replaces +0x208
-//   +0x228          DecorationNode* decorListHead   sentinel; init = self+0x228
-//   +0x230          DecorationNode* decorListTail   sentinel; init = self+0x228
-//   +0x238          int64_t        decorCount       0 at init
+//   +0x228..+0x240  std::list<DecorationValue> decorations  (libc++ head:
+//                                                prev/next/size = 0x18 bytes)
 //   +0x240          int            field240         init 0; small counter
 //   +0x244          bool           field244         init 0
 //   +0x245..+0x247  (pad)
 //
 //   total: 0x248 bytes
 //
-// "decoration" linked list nodes (added by FUN_100013870):
-//   +0x00  DecorationNode* next
-//   +0x08  DecorationNode* prev
-//   +0x10  int decorKind         (0, 1, or 2; distinguishes which sub-icon)
-//   +0x18  Quad iconSubQuad      (small icon, UVs differ per kind)
-//   +0xE0..+0x117  (extra state)
-//   +0x100..+0x137 ColorTint     (only for kind==2)
-//   +0x138  float subOffsetX
-//   +0x13C  float subOffsetY
-//   +0xF4   bool   suppressed
-//   +0xF8   int    valueShown   (only for kind==2)
-//   +0xFC   ?
-//   +0x140  ?
-// approx size >= 0x150. exact size needs phase-1 verification (FUN_100007df0
-// is the dtor; FUN_1000140b8 is the allocate-and-link helper).
+// the decorations std::list stores DecorationValue nodes (added by
+// pushDecoration); see tile_decoration.h for that value's field layout.
 
 class TileObject {
 public:
@@ -395,14 +382,9 @@ public:
     // transformToSnag can replace +0x208 without leaking the previous one.
     std::vector<SnagContent*> trackedContent;  // 0x210..0x227
 
-    // doubly-linked list of TileDecoration nodes (0x140 bytes each, sized in
-    // tile_decoration.h). sentinel = &decorListPrev. when empty,
-    // decorListPrev == decorListNext == address of decorListPrev.
-    // sorted ascending by `kind`; pushDecoration walks until the existing
-    // first-greater-or-equal node.
-    TileDecoration* decorListPrev;   // 0x228, sentinel.prev (newest)
-    TileDecoration* decorListNext;   // 0x230, sentinel.next (oldest)
-    int64_t         decorCount;      // 0x238, number of live decoration nodes
+    // decorations stacked in front of the hex face, sorted ascending by `kind`
+    // (pushDecoration inserts before the first node with a greater kind).
+    std::list<DecorationValue> decorations;   // 0x228..0x240 (0x18 bytes)
 
     // tile rotation timer 0..1. draw() rotates by rotationAnimT * 180deg.
     float rotationAnimT;             // 0x240

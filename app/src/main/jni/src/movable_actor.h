@@ -162,8 +162,9 @@ public:
     // [4] = FUN_100014a40, SnagContent's = FUN_10003dc38) extend this to
     // propagate the position onto child sub-quads. dispatched per-frame
     // from MovableActor::update's spawn-in and move-anim stages so children
-    // follow the parent during animation.
-    virtual void setPosition(float x, float y);
+    // follow the parent during animation. skipLayout&1 (passed during spawn-in)
+    // suppresses the snap and the per-override sub-quad relayout.
+    virtual void setPosition(float x, float y, int skipLayout = 0);
 
     // FUN_100038f64, vtable[5] base. propagates an alpha byte onto the
     // embedded baseQuad's 4 vertices. derived overrides extend it to also

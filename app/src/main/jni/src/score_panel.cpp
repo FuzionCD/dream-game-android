@@ -51,26 +51,10 @@ static constexpr float kDrawRowStretchMax    = 1.4f;         // DAT_100059e30
 
 static constexpr float kInitialScoreDelay    = 2.5f;         // 0x40200000
 
-// ---- ScorePanelKeyIcon (heap-allocated currency key icon, 0xF0) ----------
-// one allocated per key earned, by ScorePanel::open via operator_new(0xF0).
-// linked into the intrusive list at +0xE50/+0xE58 by manual prev/next
-// manipulation. each icon owns a Quad for its key sprite plus a progress /
-// popInTimer pair driven by update().
-
-struct ScorePanelKeyIcon {
-    ScorePanelKeyIcon* prev;        // +0x00
-    ScorePanelKeyIcon* next;        // +0x08
-    Quad               tileQuad;    // +0x10..+0xE7
-    float              progress;    // +0xE8  scale-in animation 0..1
-    float              popInTimer;  // +0xEC  per-icon stagger delay
-};
-
-static_assert(sizeof(ScorePanelKeyIcon) == 0xF0,
-              "ScorePanelKeyIcon must be 0xF0 bytes, matching the binary's "
-              "operator_new(0xF0) in FUN_100010990.");
-static_assert(offsetof(ScorePanelKeyIcon, tileQuad)   == 0x10);
-static_assert(offsetof(ScorePanelKeyIcon, progress)   == 0xE8);
-static_assert(offsetof(ScorePanelKeyIcon, popInTimer) == 0xEC);
+// the per-key currency icons live in ScorePanel::keysRow, a
+// std::list<KeyIconValue> (one entry per key earned). KeyIconValue is defined
+// in score_panel.h; each icon owns a Quad plus the progress / popInTimer pair
+// driven by update().
 
 // ---- helpers ------------------------------------------------------------
 
@@ -85,10 +69,6 @@ static inline float clamp01(float v) {
     }
 
     return v;
-}
-
-static inline ScorePanelKeyIcon* keyListSentinel(ScorePanel* panel) {
-    return reinterpret_cast<ScorePanelKeyIcon*>(&panel->keysRow);
 }
 
 // FUN_100011c98, Y-axis stretch wrapper for one TextItem.
@@ -159,65 +139,32 @@ void ScorePanel::init() {
     rowProgress  = 0;
     totalScore   = 0;
 
-    // empty sentinel: head/tail point at the list head itself, count = 0.
-    auto* sentinel = keyListSentinel(this);
-    keysRow.head  = sentinel;
-    keysRow.tail  = sentinel;
-    keysRow.count = 0;
+    keysRow.clear();
 }
 
-// FUN_100011d54, clear the key-icon linked list.
-//
-// drops each icon from the intrusive list and operator_delete's it. walks
-// from list.tail to the sentinel.
+// FUN_100011d54, clear the key-icon list (frees every icon node).
 void ScorePanel::clearKeysRow() {
-
-    if (keysRow.count == 0) {
-        return;
-    }
-
-    auto* sentinel = keyListSentinel(this);
-    auto* node     = keysRow.tail;
-
-    keysRow.head  = sentinel;
-    keysRow.tail  = sentinel;
-    keysRow.count = 0;
-
-    while (node != sentinel) {
-        ScorePanelKeyIcon* nextNode = node->next;
-        delete node;
-        node = nextNode;
-    }
+    keysRow.clear();
 }
 
-// helper: allocate + configure one key icon and append it at the head of the
-// intrusive list. mirrors the per-iteration body of FUN_100010990's
-// `iVar9 < param_3` loop.
+// helper: append + configure one key icon at the back of the list. the binary
+// inserts at the head (= sentinel.prev = last node), which is push_back here.
+// mirrors the per-iteration body of FUN_100010990's `iVar9 < param_3` loop.
 //
 // totalKeys is the open()'s `keysEarned` (= the binary's param_3, the full
 // key-earned count for the run). shared across all pushes so every icon gets
 // the same centering offset. iVar12 is the per-iteration X stride accumulator
 // (advances by 60 per push).
-static ScorePanelKeyIcon* pushKeyIcon(ScorePanel* panel, int totalKeys,
-                                       int iVar12) {
-    auto* node     = new ScorePanelKeyIcon();
-    auto* sentinel = keyListSentinel(panel);
-
-    // insert at head, manual prev/next chain mutation.
-    auto* prevHead = panel->keysRow.head;
-    node->prev     = prevHead;
-    node->next     = sentinel;
-    prevHead->next = node;
-    panel->keysRow.head  = node;
-    panel->keysRow.count += 1;
+static void pushKeyIcon(ScorePanel* panel, int totalKeys, int iVar12) {
+    KeyIconValue& icon = panel->keysRow.emplace_back();
 
     // configure tile Quad. all icons share the same UV + size. UV via
     // FUN_1000081bc:
     //   uMin = (0.3544922, 0.66015625)
     //   uMax = (0.4169922, 0.73828125)
-    node->tileQuad.setTexCoords(0.3544922f, 0.66015625f,
-                                 0.4169922f, 0.73828125f);
-    node->tileQuad.setSize(0.1f, 0.125f);
+    icon.tileQuad.setTexCoords(0.3544922f, 0.66015625f,
+                               0.4169922f, 0.73828125f);
+    icon.tileQuad.setSize(0.1f, 0.125f);
 
     // position: horizontal cascade. centering offset computed once per open():
     //   fVar15 = (totalKeys - 1) * 0.5 * (-60) / 640
@@ -230,17 +177,16 @@ static ScorePanelKeyIcon* pushKeyIcon(ScorePanel* panel, int totalKeys,
                          * (-60.0f) / kOpenKeyStrideDivisor;
     const float scoreRowY = panel->rows[7].titleLabel.posY;
 
-    node->tileQuad.posX = fVar15 + 0.5f
-                          + static_cast<float>(iVar12)
-                          / kOpenKeyStrideDivisor;
-    node->tileQuad.posY = (vh + scoreRowY) * 0.5f;
-    node->tileQuad.setAlpha(0);
-    node->tileQuad.snapToPixelGrid();
+    icon.tileQuad.posX = fVar15 + 0.5f
+                         + static_cast<float>(iVar12)
+                         / kOpenKeyStrideDivisor;
+    icon.tileQuad.posY = (vh + scoreRowY) * 0.5f;
+    icon.tileQuad.setAlpha(0);
+    icon.tileQuad.snapToPixelGrid();
 
-    node->progress   = 0.0f;
-    node->popInTimer = static_cast<float>(panel->keysRow.count)
-                       * kOpenKeyPopInStride;
-    return node;
+    icon.progress   = 0.0f;
+    icon.popInTimer = static_cast<float>(panel->keysRow.size())
+                      * kOpenKeyPopInStride;
 }
 
 // FUN_100010990, open.
@@ -269,7 +215,7 @@ void ScorePanel::open(const int* scoreCounts, int keysEarned) {
     // colors/scales, then set the row title strings.
     if (rows[0].titleLabel.storedText.empty()) {
         Game* game = getGame();
-        int* worldFont = (game != nullptr)
+        const BMFontTable* worldFont = (game != nullptr)
             ? game->bmfontTablePtr(2)
             : nullptr;
 
@@ -486,22 +432,20 @@ void ScorePanel::update(float dt) {
     // same thing.
     if (currentRow == 8 && subProgress >= 1.0f) {
         // 5. all rows shown, key-icon pop-in.
-        if (keysRow.count != 0) {
-            auto* sentinel = keyListSentinel(this);
+        if (!keysRow.empty()) {
 
-            // animate while the head node (first popped icon) hasn't completed.
-            if (keysRow.head != sentinel && keysRow.head->progress < 1.0f) {
+            // animate while the last icon (binary's head node) hasn't completed.
+            if (keysRow.back().progress < 1.0f) {
                 const float perIconRate = dt / kUpdateKeyProgRate;
 
-                for (auto* node = keysRow.tail; node != sentinel;
-                     node = node->next) {
+                for (KeyIconValue& icon : keysRow) {
 
-                    if (node->popInTimer > 0.0f) {
-                        node->popInTimer -= dt;
+                    if (icon.popInTimer > 0.0f) {
+                        icon.popInTimer -= dt;
                         continue;
                     }
 
-                    if (node->progress == 0.0f && dt > 0.0f) {
+                    if (icon.progress == 0.0f && dt > 0.0f) {
                         Game* game = getGame();
 
                         if (game != nullptr) {
@@ -509,25 +453,25 @@ void ScorePanel::update(float dt) {
                         }
                     }
 
-                    node->progress = clamp01(node->progress + perIconRate);
+                    icon.progress = clamp01(icon.progress + perIconRate);
 
                     // alpha: cos arg is progress*pi. ramps 0 -> 1 over
                     // progress 0..1.
-                    const float c = std::cos(node->progress * kUpdatePi);
+                    const float c = std::cos(icon.progress * kUpdatePi);
                     const float ease = 0.5f - c * 0.5f;
                     const auto  a = static_cast<uint8_t>(
                         static_cast<int>(ease * kUpdateAlphaMult));
-                    node->tileQuad.setAlpha(a);
+                    icon.tileQuad.setAlpha(a);
 
                     // scale: sin arg is progress * 0.8 (radians, not *pi).
                     // settles at sin(0.8)/0.866 ~= 0.83 at progress=1, so the
                     // icon rests slightly under its atlas size. the 0.8 matters:
                     // a 2*pi arg would zero both alpha and scale at progress=1
                     // and the icons would vanish. writes Quad.scaleX/scaleY.
-                    const float bump = std::sin(node->progress * kUpdateKeySinMul)
+                    const float bump = std::sin(icon.progress * kUpdateKeySinMul)
                                        / kUpdateKeyScaleDenom;
-                    node->tileQuad.scaleX = bump;
-                    node->tileQuad.scaleY = bump;
+                    icon.tileQuad.scaleX = bump;
+                    icon.tileQuad.scaleY = bump;
                 }
                 return;
             }
@@ -679,11 +623,9 @@ void ScorePanel::draw() {
     resultRankQuad.draw();
     resultPanelQuad.draw();
 
-    // walk key icons tail -> head, drawing each.
-    auto* sentinel = keyListSentinel(this);
-
-    for (auto* node = keysRow.tail; node != sentinel; node = node->next) {
-        node->tileQuad.draw();
+    // draw each key icon (oldest first).
+    for (KeyIconValue& icon : keysRow) {
+        icon.tileQuad.draw();
     }
 }
 
@@ -742,7 +684,7 @@ void ScorePanel::setResultRankVisual(int rank) {
         case 2: {
             resultRankQuad.setSize(0.15125f, 0.13250001f);
             resultPanelQuad.setTexCoords(0.66015625f, 0.10449219f,
-                                          0.7041016f, 0.16796875f);
+                                          0.7041016f, 0.1669921875f);
             resultPanelQuad.setSize(0.05625f, 0.08f);
             resultPanelQuad.posX = resultRankQuad.posX;
             resultPanelQuad.posY = resultRankQuad.posY + kLayoutRank23YBump;
@@ -753,7 +695,7 @@ void ScorePanel::setResultRankVisual(int rank) {
         case 3: {
             resultRankQuad.setSize(0.13234374f, 0.115937494f);
             resultPanelQuad.setTexCoords(0.6152344f, 0.10449219f,
-                                          0.6591797f, 0.16796875f);
+                                          0.6591797f, 0.1669921875f);
             resultPanelQuad.setSize(0.04921875f, 0.07f);
             resultPanelQuad.posX = resultRankQuad.posX;
             resultPanelQuad.posY = resultRankQuad.posY + kLayoutRank23YBump;
@@ -764,7 +706,7 @@ void ScorePanel::setResultRankVisual(int rank) {
         case 4: {
             resultRankQuad.setSize(0.11343751f, 0.099375f);
             resultPanelQuad.setTexCoords(0.5673828f, 0.10449219f,
-                                          0.6142578f, 0.16796875f);
+                                          0.6142578f, 0.1669921875f);
             resultPanelQuad.setSize(0.045f, 0.06f);
             resultPanelQuad.posX = resultRankQuad.posX + kLayoutRank4XBump;
             resultPanelQuad.posY = resultRankQuad.posY + kLayoutRank4YBump;

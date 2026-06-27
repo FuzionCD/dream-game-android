@@ -12,7 +12,7 @@
 // constants from binary
 static const float GRID_SPACING = 0.15625f;
 static const float GRID_CENTER_X = 0.578125f;  // DAT_10005a6cc
-static const float GRID_OFFSET_Y = -0.078125f;  // DAT_10005a6c8
+static const float GRID_OFFSET_Y = 0.078125f;  // DAT_10005a6c8
 static const float BG_EXTRA_H = 0.1f;          // DAT_10005a6c4
 // portrait table moved to portrait_table.h (shared with PlayerSystem so the
 // in-game character token uses the same sprite mapping).
@@ -151,14 +151,14 @@ void World::construct() {
     // position buttons (FUN_100055268):
     //   X left edge = xStart / 640.0 (DAT_10005a6bc)
     //   xStart: 11, 217, 423
-    //   Y = DAT_10005a6c0 = 0.0203
+    //   Y = DAT_10005a6c0 = 0.0203125
     //   + 0.15 yShift for modern android screens
     //
     //   text posX = frame center X (from FUN_10000aefc = getLeftX + getWidth * 0.5)
     //   text posY = frame Y + small per-button offset
     //   per-button Y offsets: 0.003125, -0.003125, -0.001563
     const float yShift = 0.15f;
-    const float btnY = 0.0203f + yShift;
+    const float btnY = 0.0203125f + yShift;  // base 0.0203125 = DAT_10005a6c0
     const int xStarts[3] = { 11, 217, 423 };
     const float textYOffsets[3] = { 0.003125f, -0.003125f, -0.001563f };
 
@@ -176,13 +176,15 @@ void World::construct() {
         // text posY = button Y + per-button offset
         float textPosY = btnY + textYOffsets[i];
 
-        // set both unselected and selected text to the same position
+        // write the unselected text position, then snap it to the pixel grid
+        // (FUN_1000573a8 = snapToPixelGrid) before mirroring the snapped pair
+        // onto the selected text quad (binary copies +0x1c88 -> +0x1d60 post-snap).
         diffButtons[i].unselectedText.quad.posX = frameCenterX;
         diffButtons[i].unselectedText.quad.posY = textPosY;
-        diffButtons[i].selectedText.quad.posX = frameCenterX;
-        diffButtons[i].selectedText.quad.posY = textPosY;
+        diffButtons[i].unselectedText.quad.snapToPixelGrid();
 
-        // snap to pixel (FUN_1000573a8 is called on the text quad in the original)
+        diffButtons[i].selectedText.quad.posX = diffButtons[i].unselectedText.quad.posX;
+        diffButtons[i].selectedText.quad.posY = diffButtons[i].unselectedText.quad.posY;
     }
 
     SDL_Log("World::construct() complete");
@@ -338,7 +340,7 @@ void World::generate(uint32_t newWorldIndex, std::set<int>& tileTypeSet) {
 
     // FUN_100055b94 with dt=0: runs the fade-in branch once at progress 0, so
     // every tile starts at alpha 0 (invisible) and fades in from there.
-    update(0.0f, nullptr, nullptr);
+    update(0.0f, nullptr);
 
     SDL_Log("World::generate - %d tiles in %dx%d grid, worldIndex=%d",
             tileCount, gridCols, gridRows, newWorldIndex);
@@ -370,7 +372,7 @@ bool World::tickFadeOut(float dt) {
 }
 
 // reconstructed from FUN_100055b94
-void World::update(float dt, uint8_t* gameData, SoundQueue* soundQueue) {
+void World::update(float dt, SoundQueue* soundQueue) {
 
     if (!visible) {
         return;
@@ -388,7 +390,7 @@ void World::update(float dt, uint8_t* gameData, SoundQueue* soundQueue) {
         }
 
         // phase 2: interactive (fade complete)
-        if (!gameData) {
+        if (!getGame()) {
             return;
         }
 

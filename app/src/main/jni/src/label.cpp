@@ -157,14 +157,15 @@ float Label::getHeight() {
 // FUN_10004c93c, getLeftX.
 //
 // natural orientation: cached leftX.
-// mirrored orientation: -(leftX) - getWidth() (reflects across origin).
+// mirrored orientation swaps axes, so the reflected left edge derives from
+// topY: -(topY) - getWidth().
 float Label::getLeftX() {
 
     if (!mirrored) {
         return leftX;
     }
 
-    return -leftX - getWidth();
+    return -topY - getWidth();
 }
 
 // FUN_10004c8cc, contains (bbox hit-test).

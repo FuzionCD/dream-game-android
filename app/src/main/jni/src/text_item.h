@@ -5,9 +5,11 @@
 #include <string>
 #include <vector>
 
+struct BMFontTable;
+
 // reconstructed from Ghidra:
 //   init():                FUN_10002fa08
-//   init(int* glyphTable): FUN_10002fa50
+//   init(glyphTable):      FUN_10002fa50
 //   ~TextItem():           FUN_10002faa0
 //   setString:             FUN_10002fae8
 //   draw():                FUN_100030014
@@ -54,7 +56,7 @@ struct TextItem {
     // FUN_10002fa50. same as init(), but stores `glyphTable` at +0x58
     // for use by setString / draw. used by panels that own a per-panel
     // glyph table (e.g. DetailPanel passes game+0x10).
-    void init(int* glyphTable);
+    void init(const BMFontTable* glyphTable);
 
     // C++ default destructor handles all three RAII members
     // (storedText / charBuffer / glyphVec) in reverse declaration order,
@@ -73,7 +75,7 @@ struct TextItem {
     void setString(const char* s, int len = -1);
 
     // FUN_100030014. push matrix, translate(posX,posY), scale, rotate;
-    // bind tex `*glyphTablePtr + 1`; iterate glyph vector calling
+    // bind tex `glyphTablePtr->textureIndex + 1`; iterate glyph vector calling
     // Quad::draw() on each via vtable[2]; if outlineGlyphCount > 0,
     // bind tex 9 and iterate the outline tail in reverse; pop matrix.
     void draw();
@@ -94,7 +96,7 @@ struct TextItem {
     std::vector<TileIcon> glyphVec;        // +0x30..+0x47  per-char TileIcon storage
     int64_t             glyphCount;        // +0x48         primary glyph count
     int64_t             outlineGlyphCount; // +0x50         trailing outline glyph count
-    int*                glyphTablePtr;     // +0x58         per-instance glyph table
+    const BMFontTable*  glyphTablePtr;     // +0x58         per-instance glyph table
     float               posX;              // +0x60
     float               posY;              // +0x64
     float               scaleX;            // +0x68         init = 1.0

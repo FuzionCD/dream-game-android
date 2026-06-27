@@ -424,10 +424,13 @@ void NemesisRenderable::update(float dt) {
                     return;
                 }
 
-                // not a level-up step. per-dot XP-gain sound. binary gates
-                // this on `dt > 0`; always true for normal frames.
-                if (Game* g = getGame()) {
-                    g->soundQueue.trigger(0x2c);       // "xp dot gained"
+                // not a level-up step. per-dot XP-gain sound, gated on dt > 0
+                // so a dt == 0 tick on a freshly-kicked cascade stays silent.
+                if (dt > 0.0f) {
+
+                    if (Game* g = getGame()) {
+                        g->soundQueue.trigger(0x2c);   // "xp dot gained"
+                    }
                 }
             }
 
@@ -455,9 +458,9 @@ void NemesisRenderable::update(float dt) {
                 uint8_t a = (uint8_t)(int)(t * ALPHA_FULL + (1.0f - t) * ALPHA_DIM);
                 outlineDots[dotIdx].quad.setAlpha(a);
 
-                // scale: cos-eased pop from 1.0 to 4.0 over fillTimer.
+                // scale: cos-eased pop from 1.0 to 1.8 over fillTimer.
                 float u = 0.5f - std::cos((t + t) * PI) * 0.5f;
-                float scale = u * 4.0f + (1.0f - u);
+                float scale = u * 1.8f + (1.0f - u);   // 1.8f = DAT_100059c3c
                 outlineDots[dotIdx].quad.scaleX = scale;
                 outlineDots[dotIdx].quad.scaleY = scale;
             }

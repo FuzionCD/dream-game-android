@@ -146,9 +146,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // reinit renderer now that we have the game struct, so letterbox quads
-    // can be set up at the correct offsets
-    Renderer::init(screenW, screenH, game->at(0));
+    // reinit renderer now that we have the game struct, so the letterbox
+    // quads can be set up
+    Renderer::init(screenW, screenH, game);
 
     // init overlay with the actual virtual height from the renderer
     game->overlay().init(Renderer::getVirtualHeight());

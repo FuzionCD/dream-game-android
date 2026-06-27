@@ -5,7 +5,6 @@
 #include "renderer.h"     // bindTexture
 #include <GLES/gl.h>
 #include <cstdio>         // sprintf
-#include <cstring>
 
 // pixel-rect helper: atlas pixel coords on 1024x1024 -> UV + display size.
 // matches the binary's FUN_100014d84.
@@ -84,7 +83,7 @@ void Item::postInitVisuals() {
     // the 2 SpecialAbility icon quads, sharing one atlas rect (531, 205, 40x40).
     // each slot drops 30 px below the previous, starting 50 px above the slot
     // origin (just under the stat-number row).
-    constexpr float SPECIAL_ABILITY_POS_X       = -0.055469f;
+    constexpr float SPECIAL_ABILITY_POS_X       = -49.0f / 640.0f;  // -0.0765625, 0xbd9ccccd at +0xa8
     constexpr float SPECIAL_ABILITY_Y_STRIDE_PX = 30.0f;
     constexpr float SPECIAL_ABILITY_Y_BASE_PX   = -50.0f;
     constexpr float PIXEL_TO_SCREEN_REF         = 640.0f;     // DAT_10005a170
@@ -102,7 +101,7 @@ void Item::postInitVisuals() {
 // FUN_100032d84, Item copy ctor. copies the header scalars, default-constructs
 // the sub-objects, copies the two descLine strings, copies each ability's
 // (type, val) plus its iconQuad bytes, then re-derives every visual via
-// postInitVisuals. the iconQuad memcpy below is promptly overwritten by
+// postInitVisuals. the iconQuad copy below is promptly overwritten by
 // postInitVisuals, so it's pure clone-pattern ceremony, but we keep it for
 // fidelity.
 Item::Item(const Item& src) {
@@ -127,15 +126,14 @@ Item::Item(const Item& src) {
     descLine[0] = src.descLine[0];
     descLine[1] = src.descLine[1];
 
-    // (6) abilities[i] header + iconQuad memcpy.
+    // (6) abilities[i] header + iconQuad copy.
     for (int i = 0; i < 2; ++i) {
         abilities[i].abilityType = src.abilities[i].abilityType;
         abilities[i].abilityVal  = src.abilities[i].abilityVal;
-        // skip the 8-byte vtable pointer at offset 0 of Quad; copy the
-        // remaining 0xD0 bytes (vertices + posXY + animMin/Max etc.).
-        std::memcpy(reinterpret_cast<uint8_t*>(&abilities[i].iconQuad) + 8,
-                    reinterpret_cast<const uint8_t*>(&src.abilities[i].iconQuad) + 8,
-                    0xD0);
+        // copy the icon quad's data members; the implicit copy-assignment
+        // leaves the vtable pointer intact, the same effect as the binary's
+        // 0xD0-byte copy past the vtable.
+        abilities[i].iconQuad = src.abilities[i].iconQuad;
     }
 
     // (7) re-derive visual setup.
@@ -233,9 +231,18 @@ void Item::init(PlayerSystem* parent, int t, int a, int d, int h,
         const int currentLevel = parent ? parent->currentLevel : 0;
 
         for (int i = 0; i < abilityCount && availableCount > 0; ++i) {
+            // the binary's pool is a sorted std::set (FUN_100033dac inserts,
+            // FUN_100033814 picks the k-th smallest remaining via in-order walk
+            // and erases it preserving order). shift-down on removal keeps
+            // available[] sorted-contiguous so rngInt(0, availableCount-1, 2)
+            // selects the same k-th smallest element as the set walk.
             int idx = rngInt(0, availableCount - 1, 2);
             int abilityType = available[idx];
-            available[idx]  = available[availableCount - 1];
+
+            for (int j = idx; j < availableCount - 1; ++j) {
+                available[j] = available[j + 1];
+            }
+
             availableCount -= 1;
 
             const SpecialAbilityEntry& entry = SPECIAL_ABILITY_POOL[abilityType];

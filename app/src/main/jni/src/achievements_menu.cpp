@@ -750,8 +750,10 @@ void AchievementsMenu::draw() {
             auto chMix = [&](uint32_t a, uint32_t b, int shift) -> uint32_t {
                 const int ca = static_cast<int>(((a >> shift) & 0xFFu));
                 const int cb = static_cast<int>(((b >> shift) & 0xFFu));
-                const int m  = static_cast<int>(static_cast<float>(ca) * invT
-                                              + static_cast<float>(cb) * t);
+                // truncate each product independently then add, matching the
+                // binary's two fcvtzs + add in FUN_10003a808.
+                const int m  = static_cast<int>(static_cast<float>(ca) * invT)
+                             + static_cast<int>(static_cast<float>(cb) * t);
                 return static_cast<uint32_t>(m & 0xFF) << shift;
             };
 

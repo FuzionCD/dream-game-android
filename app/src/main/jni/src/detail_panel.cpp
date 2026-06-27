@@ -45,7 +45,7 @@ void DetailPanel::init() {
     // ("font.fnt"), populated by Game::loadFonts at startup.
     {
         Game* g = getGame();
-        int*  glyphSrc = g ? g->bmfontTablePtr(0) : nullptr;
+        const BMFontTable* glyphSrc = g ? g->bmfontTablePtr(0) : nullptr;
         textCenter.init(glyphSrc);
     }
 
@@ -148,7 +148,7 @@ void DetailPanel::init() {
     // and textCenter gets its own scale (0.085, 0.085) before the loop.
     {
         Game* g = getGame();
-        int*  glyphSrc = g ? g->bmfontTablePtr(0) : nullptr;
+        const BMFontTable* glyphSrc = g ? g->bmfontTablePtr(0) : nullptr;
 
         textCenter.scaleX = 0.085f;
         textCenter.scaleY = 0.085f;
@@ -246,9 +246,12 @@ void DetailPanel::draw() {
             break;
     }
 
-    // text items (textCenter + 3 textLines). binary:
-    //   FUN_100030014(textCenter) ; loop FUN_100030014 on textLines.
-    textCenter.draw();
+    // text items (textCenter + 3 textLines). binary draws the title
+    // (textCenter) only when hasTitle is set, then the 3 lines unconditionally.
+    if (hasTitle) {
+        textCenter.draw();
+    }
+
     for (int i = 0; i < 3; i++) {
         textLines[i].draw();
     }
@@ -597,9 +600,10 @@ void DetailPanel::layoutAndFade(float headerY, const float* anchor,
     posX = pixelSnap640(posX);
     posY = pixelSnap640(posY);
 
-    // start / target positions for the slide-in animation. portrait springs
-    // up from below; landscape springs down from above.
-    float slideSign = (anchorY < 0.625f) ? 1.0f : -1.0f;
+    // start / target positions for the slide-in animation. an upper anchor
+    // (anchorY < 0.625) drops in from above; a lower anchor rises from below.
+    // DAT_10005a3f0 = {+1.0, -1.0} indexed by (anchorY < 0.625).
+    float slideSign = (anchorY < 0.625f) ? -1.0f : 1.0f;
     startPosX = posX;
     startPosY = posY + slideSign * 0.031250f;
     targetPosX = posX;
@@ -975,26 +979,26 @@ void DetailPanel::populateForSnag(float headerY, const float* anchor,
     // which the combatSimPreview block below references for its anchor.
     //
     // Obsession (kind 0x06) is the only snag whose desc lines carry runtime
-    // sprintf format placeholders (FUN_10003e154's special-case path). its
-    // desc1 takes the snag's consumedFlag (+0x490, seeded to 100 = 100%
-    // chance and depleted on re-draws) and desc2 takes obsessionCount
-    // (+0x494, the turn count). substitute here before passing the strings
-    // through so the player doesn't see literal %d in the card.
-    const char* desc1 = s.desc1;
+    // sprintf format placeholders (FUN_10003e154's special-case path). desc2
+    // takes the snag's consumedFlag (+0x490, seeded to 100 = 100% chance and
+    // depleted on re-draws); desc3 takes obsessionCount (+0x494, the turn
+    // count). desc1 has no placeholder and is passed through untouched.
+    // substitute here so the player doesn't see literal %d in the card.
     const char* desc2 = s.desc2;
-    char obsessionBuf1[256];
+    const char* desc3 = s.desc3;
     char obsessionBuf2[256];
+    char obsessionBuf3[256];
 
     if (snagType == (int)SnagKind::Obsession && snag) {
-        std::snprintf(obsessionBuf1, sizeof(obsessionBuf1), s.desc1,
-                      (int)snag->consumedFlag);
         std::snprintf(obsessionBuf2, sizeof(obsessionBuf2), s.desc2,
+                      (int)snag->consumedFlag);
+        std::snprintf(obsessionBuf3, sizeof(obsessionBuf3), s.desc3,
                       (int)snag->obsessionCount);
-        desc1 = obsessionBuf1;
         desc2 = obsessionBuf2;
+        desc3 = obsessionBuf3;
     }
     layoutAndFade(headerY, anchor, /*inhibitOpt=*/0, /*mode5Bit=*/1,
-                  s.name, desc1, desc2, s.desc3);
+                  s.name, s.desc1, desc2, desc3);
 
     // ---- 3) outerFrame: a small hex-tile sprite drawn below the snag icon ----
     outerFrame.quad.setTexCoords(0.475586f, 0.019531f, 0.512695f, 0.064453f);

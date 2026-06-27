@@ -11,7 +11,7 @@
 #include "renderer.h"
 #include "snag_content.h"       // rollRackTile reads SnagContent::consumedFlag
 #include "tile_content.h"       // TileContent::setMagnitude, pickup magnitude resync
-#include "tile_decoration.h"    // TileDecoration, snapshot decorations walk
+#include "tile_decoration.h"    // DecorationValue, snapshot decorations walk
 #include "tile_grid_pool.h"     // kGridPoolTable, findGridIdxPool consumer
 #include "tile_content_table.h" // kTileTextTable, DetailPanel content-name gate
 #include <SDL.h>
@@ -1560,7 +1560,9 @@ void GameBoard::tickInertialPanScroll(float dt) {
         float t = panProgress + dt * PAN_RATE;
         panProgress = t;
 
-        if (t < 1.0f) {
+        // binary uses b.le: at exactly t == 1.0 it still lerps (u resolves to
+        // 1.0, landing on the exact un-snapped target) rather than snapping.
+        if (t <= 1.0f) {
             float u = 0.5f - std::cos(t * ANIM_PI) * 0.5f;
             positionX = panTargetX * u + panStartX * (1.0f - u);
             positionY = panTargetY * u + panStartY * (1.0f - u);
@@ -2300,7 +2302,7 @@ void GameBoard::placeExitAndKeys(int col, int row) {
     // configure exitTileIcon (the visible Exit tile; the HexMap kind=1 cell
     // is invisible, this Quad supplies the artwork). UV gets overwritten by
     // recomputeExitKeysCollected; we still seed it here.
-    exitTileIcon.quad.setTexCoords(0.386719f, 0.214844f, 0.478516f, 0.262695f);
+    exitTileIcon.quad.setTexCoords(0.387695f, 0.214844f, 0.478516f, 0.262695f);  // u0 = 0x3ec68000
     exitTileIcon.quad.setSize(0.145313f, 0.076563f);
 
     // exit position. binary leans on a side effect of FUN_100012f04: in mode=0
@@ -2377,7 +2379,7 @@ void GameBoard::recomputeExitKeysCollected() {
 
     if (collected < required) {
         // locked exit art.
-        exitTileIcon.quad.setTexCoords(0.386719f, 0.214844f, 0.478516f, 0.262695f);
+        exitTileIcon.quad.setTexCoords(0.387695f, 0.214844f, 0.478516f, 0.262695f);  // u0 = 0x3ec68000
         exitTileIcon.quad.setSize(0.145313f, 0.076563f);
     } else {
         // unlocked exit art (slightly different UV rectangle, same size).
@@ -3175,16 +3177,19 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
             // uses snag->sendToward(target, reparent=false).
             //
             // binary maintains a sliding 6-node window via an explicit
-            // doubly-linked list it builds inline; std::vector indexed by
-            // (i - 5) is the equivalent operation.
+            // doubly-linked list it builds inline (FUN_100020f80 case 0xc).
+            // it skips only the oldest tile (index 0) and sends every other
+            // tile's snag toward the window tail: page[0] while the window has
+            // fewer than 6 nodes (indices 1..5), then page[i - 5] thereafter.
             std::vector<TileObject*> page(pageList.begin(), pageList.end());
 
             bool any = false;
-            for (size_t i = 5; i < page.size(); ++i) {
+            for (size_t i = 1; i < page.size(); ++i) {
                 SnagContent* sc = page[i]->getSnagIfAlive();
 
                 if (sc != nullptr) {
-                    sc->sendToward(page[i - 5], false);
+                    size_t target = (i >= 5) ? (i - 5) : 0;
+                    sc->sendToward(page[target], false);
                     any = true;
                 }
             }
@@ -3344,7 +3349,9 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
         case EventKind::EarlyWarning: {
             // case 19: "Set a held normal snag's {H} to 1." stage every
-            // rack tile whose snagType == 1; open discard panel. (the
+            // rack tile whose snagType == 1 and whose snag hp > 1; open
+            // discard panel. setting {H} = 1 is a no-op on a 1-HP snag so
+            // the binary excludes those (SnagContent+0x13c gate). (the
             // discard-panel confirm path applies the actual {H} = 1
             // mutation, but selection is what we set up here.)
             for (int i = 0; i < 5; ++i) {
@@ -3352,6 +3359,10 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
                 if (tile == nullptr) continue;
                 if (tile->getSnagType() != 1) continue;
+
+                SnagContent* sc = tile->getSnagIfAlive();
+
+                if (sc->hp <= 1) continue;
 
                 pushDiscardStagingEntry(i);
             }
@@ -5536,8 +5547,8 @@ void GameBoard::dispatchSnagPostCommit(SnagContent* snag) {
         case 2:  // Hound: attack oldest committed tile (LAB_100025c40).
         case 0x6c: {  // Honesty: same body.
 
-            if (!milestoneActive && !pageList.empty()) {
-                TileObject* oldestTile = pageList.front();
+            if (!milestoneActive) {
+                TileObject* oldestTile = pageList.front();   // *(gb+0x1b0) = front node value
                 snag->sendToward(oldestTile, false);
                 allowFinalSendToward = false;
                 dispatchDeath        = false;
@@ -6225,6 +6236,7 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
         // Fatigue: zero player atk + def.
         setATK(0);
         setDEF(0);
+        pushTrailingAction = true;   // case 0x53 breaks to LAB_1000265e4
     }
     else if (snagType == 0x57) {
         // PainfulMemory: replace dead-snag rack tiles with content-0x11
@@ -6247,11 +6259,13 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
             rack[slot]->setTileContent(0x11u, n);
             n++;
         }
+        pushTrailingAction = true;   // case 0x57 breaks to LAB_1000265e4
     }
     else if (snagType == 0x5a) {
         // Surprise: roll random snag-type and spawn it.
         int rolledType = rollSnagType();
         pushReserveSnagTile((uint32_t)rolledType, 0xffffffffu);
+        pushTrailingAction = true;   // case 0x5a breaks to LAB_1000265e4
     }
     else if (snagType == 0x5d) {
         // HiddenAgenda: spawn a content-0x12 tile with atk magnitude (if
@@ -6309,8 +6323,8 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
         pushTrailingAction = true;
     }
 
-    // LAB_1000265e4: cases 0x44 / 0x60 / 0x61 push an action burst
-    // before the XP gain path.
+    // LAB_1000265e4: cases 0x44 / 0x53 / 0x57 / 0x5a / 0x60 / 0x61 push an
+    // action burst before the XP gain path (0x5d branches past it).
     if (pushTrailingAction) {
         TileObject* snagParent = snag->tileParent;
         pushAction(0, boardOrigin, snagParent);
@@ -9033,14 +9047,15 @@ void GameBoard::onPointerReleasedDuringDrag() {
         TileObject* heldTile = rack[selectedRackSlot];
 
         // binary computes the touch in board-local coords:
-        //   touchOffset = (touchX - boardX, touchY - boardY)
-        // then bbox-tests against the tile's local-space quad. we mirror
-        // that here even though our bbox helper isn't ported yet; without
-        // the gate, we'd snap-back on every release-while-held, losing the
-        // player's drag-and-place gesture entirely.
+        //   touchOffset = (touchX - positionX, touchY - positionY)
+        // then bbox-tests against the tile's local-space quad (0x10001b670).
+        // the held tile's quad pos is board-local, so the raw screen touch
+        // must have the board translate subtracted first; the setPosition
+        // follow-up below adds positionX/positionY back.
         // FUN_1000083bc port = Quad::contains.
         bool overHeldTile = (g != nullptr) && heldTile &&
-                            heldTile->mainQuad.contains(g->touchX(), g->touchY());
+                            heldTile->mainQuad.contains(g->touchX() - positionX,
+                                                        g->touchY() - positionY);
 
         if (overHeldTile && heldTile) {
             // matches binary: setPosition(tile.posX + boardX, tile.posY +
@@ -9396,8 +9411,23 @@ void GameBoard::animateMidGrabHexHighlight(float dt) {
             return;
         }
 
-        // drag-begin hook (FUN_100020f1c). sets dragActive and seeds the
-        // velocity-tracking state (pan anchor + prev-touch + velocity).
+        // settle any in-flight pan or inertial fling first (FUN_100020f1c):
+        // park the animation at its target and snap to the pixel grid, so the
+        // drag anchors off a stable position.
+        if (panInertiaActive || panProgress < 1.0f) {
+            constexpr float SNAP_SCALE = 640.0f;
+            auto snap = [&](float v) {
+                float t = v * SNAP_SCALE;
+                return ((t >= 0.0f) ? (float)(int)(t + 0.5f)
+                                    : (float)(int)(t - 0.5f)) / SNAP_SCALE;
+            };
+            panInertiaActive = false;
+            panProgress = 1.0f;
+            positionX = snap(positionX);
+            positionY = snap(positionY);
+        }
+
+        // seed the drag velocity-tracking state (pan anchor + prev-touch + velocity).
         dragActive = true;
         panAnchorX = positionX - g->touchX();
         panAnchorY = positionY - g->touchY();
@@ -9600,7 +9630,7 @@ void GameBoard::animateMidGrabHexHighlight(float dt) {
         float speedSq = vx * vx + vy * vy;
         float speed   = std::sqrt(speedSq);
 
-        if (speed >= DRAG_SPEED_CAP) {
+        if (speed > DRAG_SPEED_CAP) {
             vx = (vx / speed) * DRAG_SPEED_CAP;
             vy = (vy / speed) * DRAG_SPEED_CAP;
         }
@@ -10832,6 +10862,8 @@ void GameBoard::applyHexPickupConsumeEffect(float /*dt*/) {
     }
 
     // ---- cleanup pass (binary's tail at 0x100021d51c bottom) ----
+    // selectedEvent points at the armed slot's eventType, which is EventSlot's
+    // first field, so casting it back recovers the owning slot.
     EventSlot* armedSlot =
         reinterpret_cast<EventSlot*>(hud.selectedEvent);
     getGame()->achievementTracker().noteEventActivated(*armedSlot);
@@ -11711,15 +11743,19 @@ void GameBoard::marchPageSnags() {
             if (curSnag != nullptr) {
 
                 if (curSnag->type == 0xF) {
-                    int* chainStat = reinterpret_cast<int*>(&curSnag->consumedFlag);
-                    int original = *chainStat;
+                    // +0x490 is per-kind scratch; type 0xF uses it as a small
+                    // chain-countdown counter. the binary reads/writes it as a
+                    // 4-byte int, but the value always fits in consumedFlag's
+                    // byte (the upper 3 bytes are padding, always zero), so the
+                    // named field is exactly equivalent.
+                    int original = curSnag->consumedFlag;
                     int newStat  = 2;
 
                     if (original > 1) {
                         newStat = original - 1;
                     }
 
-                    *chainStat = newStat;
+                    curSnag->consumedFlag = (uint8_t)newStat;
 
                     if (original > 1) {
                         skipDispatch = true;  // = binary's "goto LAB_10001d3b0"
@@ -12497,6 +12533,12 @@ void GameBoard::initLevelContent() {
     // both early-out unless their `visible` flag is set; at level start
     // visible == 0 from the GameBoard memset, so these calls are no-ops.
     detailPanel.reset(1);
+
+    // explicit clear of detailPanel.touchHoldArea (gb+0x54A8). reset() bails
+    // when !visible, so we write the field unconditionally, matching
+    // FUN_1000165e8's ordering (reset, then field clear, then dialog reset).
+    detailPanel.touchHoldArea = 0;
+
     dialogPanel.reset(1);
 
     // 7.12 reset the discard-staging queue + selected Event pointer
@@ -13312,7 +13354,7 @@ void extractSnagContent(const SnagContent& sc, uint32_t out[6]) {
 //   tileFields3[2]  = tile.rotationStep  (+0xE4)
 //   contentFields2  = extractTileContent(*tile.content)    if present, else {0,0}
 //   snagFields6     = extractSnagContent(*tile.snagContent) if present, else 0s
-//   decorationsOut  = (kind, value) of each suppressed==0 TileDecoration in the
+//   decorationsOut  = (kind, value) of each suppressed==0 decoration in the
 //                     tile's decorList. nullable; placedTiles pass nullptr to
 //                     skip the decoration walk.
 //
@@ -13350,25 +13392,18 @@ void extractTileToSnapshot(TileObject& tile,
 
     decorationsOut->clear();
 
-    // walk tile.decorList from decorListNext (oldest) forward via .next,
-    // ending at &tile.decorListPrev (= sentinel address). push each entry
-    // whose `suppressed` byte is 0 (= actively hiding the tile content).
-    const TileDecoration* sentinel =
-        reinterpret_cast<const TileDecoration*>(&tile.decorListPrev);
-    TileDecoration* node = tile.decorListNext;
+    // walk the tile's decorations (oldest first). push each entry whose
+    // `suppressed` byte is 0 (= actively hiding the tile content).
+    for (const DecorationValue& d : tile.decorations) {
 
-    while (node != sentinel) {
-
-        if (!node->suppressed) {
-            const uint32_t kindU  = static_cast<uint32_t>(node->kind);
-            const uint32_t valueU = static_cast<uint32_t>(node->value);
+        if (!d.suppressed) {
+            const uint32_t kindU  = static_cast<uint32_t>(d.kind);
+            const uint32_t valueU = static_cast<uint32_t>(d.value);
             const int64_t packed = static_cast<int64_t>(
                                        static_cast<uint64_t>(kindU) |
                                        (static_cast<uint64_t>(valueU) << 32));
             decorationsOut->push_back(packed);
         }
-
-        node = node->next;
     }
 }
 
@@ -13541,7 +13576,11 @@ void GameBoard::dirtyXferSnapshot(GameSnapshot& snap) {
 
         if (tile == nullptr) {
             // landmark zero pattern: gridIdx, mirror, rotationStep,
-            // contentType, snagKind, decorations vec.
+            // contentType, snagKind. the binary's null branch zeroes only
+            // these four scalar landmarks (rack-entry +0x88/+0x8c/+0x90 u64/
+            // +0x9c) and deliberately leaves the decorations vector (rack
+            // entry +0x30) untouched, so stale entries from a prior reuse of
+            // this GameSnapshot persist (FUN_1000269b8).
             r.gridIdx      = 0;
             r.mirror       = false;
             // rotationStep + contentType form the u64 at rack+8 in the
@@ -13549,7 +13588,6 @@ void GameBoard::dirtyXferSnapshot(GameSnapshot& snap) {
             r.rotationStep = 0;
             r.contentType  = 0;
             r.snagKind     = 0;
-            r.decorations.clear();
             continue;
         }
 
@@ -13898,11 +13936,12 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
         ps.gridCol = newestCol;
         ps.gridRow = newestRow;
 
-        // avatar position: mode-1 snapped hex X for (col, row); Y = the
-        // case-1 seed (1.0, = FUN_100016b18's param_2). the layout pass
-        // (section 17) repositions afterward.
+        // avatar position: mode-1 snapped hex (X, Y) for (col, row). the
+        // binary stores both s0 and s1 from FUN_100012f04 (0x100056cf8 stp
+        // s0,s1); Ghidra drops the s1 output, but hexCellSnappedXY exposes
+        // both. the layout pass (section 17) repositions afterward.
         const HexCellPos avatarPos = hexCellSnappedXY(newestCol, newestRow);
-        ps.setPosition(avatarPos.x, 1.0f);
+        ps.setPosition(avatarPos.x, avatarPos.y);
 
         // reset() clears the 3 item slots + perk vector, applies the
         // portrait UV for characterIndex, and sets base stats to 1; the

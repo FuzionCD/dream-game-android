@@ -89,6 +89,10 @@ public:
 
     // ---- public methods ----
 
+    // FUN_10002cbbc, dtor. frees the 3 preview Perk objects the slots own
+    // (open() heap-allocates them); the rest of the panel is value members.
+    ~LevelUpPanel();
+
     // FUN_10002c230, MenuLevel ctor. runs once at GameBoard construction time.
     // calls Menu::init with title atlas (641, 906, 251, 48), then initializes
     // the 6 slots' sub-objects, sets up each stat icon's content type

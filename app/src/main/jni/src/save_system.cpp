@@ -219,10 +219,10 @@ static void loadSavedGame(Game& game, const uint8_t* blob, size_t length) {
     // reserveItems vector, variable-length per entry, same shape as
     // a rack-slot snapshot minus the inner coords vec.
     {
-        const uint8_t n = readU8(blob, cur);
+        const uint16_t n = readU16(blob, cur);
         snap.reserveItems.resize(n);
 
-        for (uint8_t i = 0; i < n; ++i) {
+        for (uint16_t i = 0; i < n; ++i) {
             ReserveItemSnapshot& e = snap.reserveItems[i];
             e.listSlotIndex    = static_cast<int32_t>(
                                       static_cast<int8_t>(readU8(blob, cur)));
@@ -248,10 +248,10 @@ static void loadSavedGame(Game& game, const uint8_t* blob, size_t length) {
 
     // placedTiles vector, fixed 7 bytes per entry.
     {
-        const uint8_t n = readU8(blob, cur);
+        const uint16_t n = readU16(blob, cur);
         snap.placedTiles.resize(n);
 
-        for (uint8_t i = 0; i < n; ++i) {
+        for (uint16_t i = 0; i < n; ++i) {
             PlacedTileSnapshot& p = snap.placedTiles[i];
             p.col          = readI16(blob, cur);
             p.row          = readI16(blob, cur);
@@ -264,9 +264,9 @@ static void loadSavedGame(Game& game, const uint8_t* blob, size_t length) {
     // placedContentMap: key (u16), then (u8 + i16) -> packed uint64 value.
     snap.placedContentMap.clear();
     {
-        const uint8_t n = readU8(blob, cur);
+        const uint16_t n = readU16(blob, cur);
 
-        for (uint8_t i = 0; i < n; ++i) {
+        for (uint16_t i = 0; i < n; ++i) {
             const uint16_t key  = readU16(blob, cur);
             const uint8_t  vlo  = readU8 (blob, cur);
             const int16_t  vhi  = readI16(blob, cur);
@@ -280,9 +280,9 @@ static void loadSavedGame(Game& game, const uint8_t* blob, size_t length) {
     // {kind, hp, atk, def} + the 2 extras (conditional on snagHasExtras(kind)).
     snap.placedSnagMap.clear();
     {
-        const uint8_t n = readU8(blob, cur);
+        const uint16_t n = readU16(blob, cur);
 
-        for (uint8_t i = 0; i < n; ++i) {
+        for (uint16_t i = 0; i < n; ++i) {
             const uint16_t key = readU16(blob, cur);
             PlacedSnagFields v{};
             v.kind = readU8 (blob, cur);
@@ -355,9 +355,11 @@ static void loadSavedGame(Game& game, const uint8_t* blob, size_t length) {
         }
     }
 
-    // 16-byte Nemesis block: visible-byte gate + grid (col, row) i16 pair
-    // (only when visible) + level/XP u8 pair (unconditional).
+    // Nemesis block: visible-byte gate, then level/XP u8 pair
+    // (unconditional), then grid (col, row) i16 pair (only when visible).
     snap.nemesisVisible = (readU8(blob, cur) == 1);
+    snap.nemesisLevel   = readU8(blob, cur);
+    snap.nemesisXP      = readU8(blob, cur);
 
     if (snap.nemesisVisible) {
         snap.nemesisGridCol = readI16(blob, cur);
@@ -367,9 +369,6 @@ static void loadSavedGame(Game& game, const uint8_t* blob, size_t length) {
         snap.nemesisGridCol = 0;
         snap.nemesisGridRow = 0;
     }
-
-    snap.nemesisLevel = readU8(blob, cur);
-    snap.nemesisXP    = readU8(blob, cur);
 
     // eventTraySnapshot: (kind:u8, slot-state:u8) pairs packed as int64
     // (FUN_10002a324 fills each entry from hud.eventTray[i]).
@@ -457,7 +456,7 @@ static const uint8_t* encodeSavedGame(Game& game, size_t* outLength) {
     // 384 KB absolute max, plus headers), then resize down after
     // encode. the slot's scratch buffer at game+0x2E6B8 is libc++
     // std::vector<uint8_t>.
-    auto& scratch = game.field<std::vector<uint8_t>>(0x2E6B8);
+    auto& scratch = game.saveScratch(0);
     scratch.resize(1024 * 1024);
     uint8_t* dst = scratch.data();
     size_t cur = 0;
@@ -541,7 +540,7 @@ static const uint8_t* encodeSavedGame(Game& game, size_t* outLength) {
         }
     }
 
-    writeU8(dst, cur, static_cast<uint8_t>(snap.reserveItems.size()));
+    writeU16(dst, cur, static_cast<uint16_t>(snap.reserveItems.size()));
 
     for (const ReserveItemSnapshot& e : snap.reserveItems) {
         writeU8(dst, cur, static_cast<uint8_t>(e.listSlotIndex));
@@ -568,7 +567,7 @@ static const uint8_t* encodeSavedGame(Game& game, size_t* outLength) {
         }
     }
 
-    writeU8(dst, cur, static_cast<uint8_t>(snap.placedTiles.size()));
+    writeU16(dst, cur, static_cast<uint16_t>(snap.placedTiles.size()));
 
     for (const PlacedTileSnapshot& p : snap.placedTiles) {
         writeI16(dst, cur, static_cast<int16_t>(p.col));
@@ -578,7 +577,7 @@ static const uint8_t* encodeSavedGame(Game& game, size_t* outLength) {
         writeU8 (dst, cur, static_cast<uint8_t>(p.rotationStep));
     }
 
-    writeU8(dst, cur, static_cast<uint8_t>(snap.placedContentMap.size()));
+    writeU16(dst, cur, static_cast<uint16_t>(snap.placedContentMap.size()));
 
     for (const auto& [key, packed] : snap.placedContentMap) {
         writeU16(dst, cur, static_cast<uint16_t>(key));
@@ -587,7 +586,7 @@ static const uint8_t* encodeSavedGame(Game& game, size_t* outLength) {
                                 static_cast<int32_t>(packed >> 32)));
     }
 
-    writeU8(dst, cur, static_cast<uint8_t>(snap.placedSnagMap.size()));
+    writeU16(dst, cur, static_cast<uint16_t>(snap.placedSnagMap.size()));
 
     for (const auto& [key, v] : snap.placedSnagMap) {
         writeU16(dst, cur, static_cast<uint16_t>(key));
@@ -650,14 +649,13 @@ static const uint8_t* encodeSavedGame(Game& game, size_t* outLength) {
     }
 
     writeU8(dst, cur, snap.nemesisVisible ? 1 : 0);
+    writeU8(dst, cur, static_cast<uint8_t>(snap.nemesisLevel));
+    writeU8(dst, cur, static_cast<uint8_t>(snap.nemesisXP));
 
     if (snap.nemesisVisible) {
         writeI16(dst, cur, static_cast<int16_t>(snap.nemesisGridCol));
         writeI16(dst, cur, static_cast<int16_t>(snap.nemesisGridRow));
     }
-
-    writeU8(dst, cur, static_cast<uint8_t>(snap.nemesisLevel));
-    writeU8(dst, cur, static_cast<uint8_t>(snap.nemesisXP));
 
     writeU8(dst, cur, static_cast<uint8_t>(snap.eventTraySnapshot.size()));
 
@@ -748,7 +746,7 @@ static const uint8_t* encodeSettings(Game& game, size_t* outLength) {
     // resize scratch to the fixed 11-byte blob size. binary's scratch is
     // a heap buffer it pre-allocates; libc++ vector::resize gives us the
     // same end result (data ptr stable for the duration of this call).
-    auto& scratch = game.field<std::vector<uint8_t>>(0x2E6F0);
+    auto& scratch = game.saveScratch(1);
     scratch.resize(11);
     uint8_t* dst = scratch.data();
 
@@ -838,7 +836,7 @@ static const uint8_t* encodeUnlocks(Game& game, size_t* outLength) {
                            + 1 + snap.snagUnlocks.size()
                            + 1 + snap.eventUnlocks.size();
 
-    auto& scratch = game.field<std::vector<uint8_t>>(0x2E760);
+    auto& scratch = game.saveScratch(2);
     scratch.resize(totalSize);
     uint8_t* dst = scratch.data();
 
@@ -938,7 +936,7 @@ static const uint8_t* encodeScoreRecords(Game& game, size_t* outLength) {
     const size_t count = buf.size();
     const size_t totalSize = 2 + (count * 11);
 
-    auto& scratch = game.field<std::vector<uint8_t>>(0x2E7A0);
+    auto& scratch = game.saveScratch(3);
     scratch.resize(totalSize);
     uint8_t* dst = scratch.data();
 
@@ -1064,7 +1062,7 @@ static const uint8_t* encodeAchievements(Game& game, size_t* outLength) {
                            + 1 + snap.snagKinds.size()          // snagKinds
                            + 1;                                 // damagedThisRun
 
-    auto& scratch = game.field<std::vector<uint8_t>>(0x2E848);
+    auto& scratch = game.saveScratch(4);
     scratch.resize(totalSize);
     uint8_t* dst = scratch.data();
 

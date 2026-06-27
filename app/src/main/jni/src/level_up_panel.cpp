@@ -48,6 +48,15 @@
 //   phase 6: per-perk-slot visual layout. same chrome pattern as phase 5
 //            plus the TextItem nameText / descText[0..2] glyph table + scale
 //            wires.
+// FUN_10002cbbc, dtor. frees the preview Perks the slots own (delete is
+// null-safe, matching the binary's cbz guard). ~Perk tears down each one's
+// TileIcon / ColorTint sub-objects.
+LevelUpPanel::~LevelUpPanel() {
+    for (LevelUpPerkSlot& slot : perkSlots) {
+        delete slot.perk;
+    }
+}
+
 void LevelUpPanel::init() {
     // ---- phase 1: Menu base ctor (FUN_100057424) ----
     //
@@ -258,10 +267,10 @@ void LevelUpPanel::init() {
     // (3 BMFontTables live at game+0x10/+0x1220/+0x2430 per game.h, the first
     // is the panel font used by all panel-resident TextItems).
     Game* perkGame = getGame();
-    int* panelFontTable = nullptr;
+    const BMFontTable* panelFontTable = nullptr;
 
     if (perkGame) {
-        panelFontTable = (int*)&perkGame->bmfontTable(0);
+        panelFontTable = &perkGame->bmfontTable(0);
     }
 
     for (int i = 0; i < PERK_SLOT_COUNT; ++i) {
@@ -325,14 +334,11 @@ void LevelUpPanel::init() {
     }
 }
 
-// FUN_10002d278, open the level-up panel.
-//
-// the binary's full body is ~150 lines: sets up 3 stat-slot Quad +
-// ColorTint visuals + 3 perk-slot Perk* + name TextItem + 3 desc
-// TextItems. we port the gameplay-critical setup (allocate 3 fresh Perks
-// matching pickPerkSet's output; clear the selected-picks list; cache
-// the perkLevel(0xE) flag) and defer the visual scaffolding (slot
-// positions / icon UVs / glyph table writes) to a polish pass.
+// FUN_10002d278, open the level-up panel. sets up the 3 stat slots (magnitude +
+// tint + position), allocates the 3 perk-slot Perks matching pickPerkSet's
+// output, writes each perk's name + 3 description TextItems with their
+// positions, runs setSlotSelected, and primes with update(0). the per-glyph
+// tables are wired once in init().
 void LevelUpPanel::open(PlayerSystem* playerSystem) {
     // step 1: base show (visible byte, animTimer0, audio cue 0x08).
     Menu::panelShow();
@@ -519,11 +525,12 @@ void LevelUpPanel::open(PlayerSystem* playerSystem) {
 //       since each category is removed after one pick, this guarantees up
 //       to 3 perks from up to 3 distinct categories.
 //
-//   pass 2, stat-bump fallback when category coverage is sparse:
-//     - if no picked category >= 5 (ATK theme): add perkType 0 (Strong) to
+//   pass 2, stat-bump fallback when a specific category is missing:
+//     - if category 5 (ATK) was not picked: add perkType 0 (Strong) to
 //       fallback set.
-//     - if no picked category >= 4 (ATK or DEF): add perkType 4 (Tough).
-//     - if no picked category >= 3 (ATK/DEF/HP): add perkType 8 (Resilient).
+//     - if category 4 (DEF) was not picked: add perkType 4 (Tough).
+//     - if category 3 (HP) was not picked: add perkType 8 (Resilient).
+//       (exact set membership via std::set::lower_bound, not "any >= N".)
 //     - while picks < 3: pop random from fallback set, push to outPerkTypes.
 //       binary's FUN_10002dd7c returns 0 when the set is empty so degenerate
 //       cases push Strong repeatedly; we match that.
@@ -555,6 +562,16 @@ void LevelUpPanel::pickPerkSet(PlayerSystem* playerSystem,
             continue;   // locked at current XP level
         }
 
+        // prerequisite gate (FUN_1000422b8): level entry +0 is either 0x19
+        // (none) or a perkType the player must already own. Perceptive (0x13)
+        // and Sudden (0x14) require Eventful (0x12). read at the current level
+        // index, matching the binary's begin + perkLevel * 0x18 + 0.
+        int prereq = entry.levels[curLvl].prerequisite;
+
+        if (prereq != 0x19 && playerSystem->perkLevel(prereq) == 0) {
+            continue;   // prerequisite perk not yet owned
+        }
+
         int cat = entry.category;
         availableByCategory[cat][availableCounts[cat]++] = t;
     }
@@ -578,8 +595,13 @@ void LevelUpPanel::pickPerkSet(PlayerSystem* playerSystem,
         int catIdx = rngInt(0, nonEmptyCount - 1, 1);
         int cat    = nonEmptyCats[catIdx];
 
-        // remove this category from the available set by swap-with-last.
-        nonEmptyCats[catIdx] = nonEmptyCats[nonEmptyCount - 1];
+        // remove this category from the available set, preserving sort order
+        // so the array mirrors the binary's std::set after each erase (the
+        // i-th node it draws is the i-th smallest; FUN_10002dc60).
+        for (int k = catIdx; k < nonEmptyCount - 1; ++k) {
+            nonEmptyCats[k] = nonEmptyCats[k + 1];
+        }
+
         nonEmptyCount -= 1;
 
         int perkIdx  = rngInt(0, availableCounts[cat] - 1, 1);
@@ -589,42 +611,24 @@ void LevelUpPanel::pickPerkSet(PlayerSystem* playerSystem,
 
     // ---- pass 2 stat-bump fallback ----
     //
-    // a category C "covers" tier T when C >= T. so if any picked category is
-    // >= 5, we don't need the ATK stat-bump fallback, etc.
+    // the binary checks EXACT category membership via std::set::lower_bound:
+    // it adds a stat-bump perk only when that specific category is absent from
+    // the picked set, not when no higher category was picked. category 5 maps
+    // to Strong (0), 4 to Tough (4), 3 to Resilient (8).
     if (picked < 3) {
         int fallback[3];
         int fallbackCount = 0;
 
-        bool hasGE5 = false, hasGE4 = false, hasGE3 = false;
-
-        for (int c = 0; c < CATEGORY_COUNT; ++c) {
-
-            if (pickedCatBitset[c]) {
-
-                if (c >= 5) {
-                    hasGE5 = true;
-                }
-
-                if (c >= 4) {
-                    hasGE4 = true;
-                }
-
-                if (c >= 3) {
-                    hasGE3 = true;
-                }
-            }
+        if (!pickedCatBitset[5]) {
+            fallback[fallbackCount++] = 0;   // Strong (ATK stat-bump), category 5
         }
 
-        if (!hasGE5) {
-            fallback[fallbackCount++] = 0;   // Strong (ATK stat-bump)
+        if (!pickedCatBitset[4]) {
+            fallback[fallbackCount++] = 4;   // Tough (DEF stat-bump), category 4
         }
 
-        if (!hasGE4) {
-            fallback[fallbackCount++] = 4;   // Tough (DEF stat-bump)
-        }
-
-        if (!hasGE3) {
-            fallback[fallbackCount++] = 8;   // Resilient (HP stat-bump)
+        if (!pickedCatBitset[3]) {
+            fallback[fallbackCount++] = 8;   // Resilient (HP stat-bump), category 3
         }
 
         while (picked < 3) {
@@ -632,7 +636,13 @@ void LevelUpPanel::pickPerkSet(PlayerSystem* playerSystem,
             if (fallbackCount > 0) {
                 int idx = rngInt(0, fallbackCount - 1, 1);
                 outPerkTypes[picked++] = fallback[idx];
-                fallback[idx] = fallback[fallbackCount - 1];
+
+                // order-preserving erase, mirroring the binary's std::set
+                // (FUN_10002dd7c draws the idx-th smallest, then erases it).
+                for (int k = idx; k < fallbackCount - 1; ++k) {
+                    fallback[k] = fallback[k + 1];
+                }
+
                 fallbackCount -= 1;
             } else {
                 // binary's FUN_10002dd7c returns 0 from empty set; match.

@@ -65,11 +65,17 @@ void MovableActor::revive() {
 }
 
 // reconstructed from Ghidra FUN_100038ec4, vtable[4] base. PlayerSystem
-// doesn't override this; TileContent / SnagContent do.
-void MovableActor::setPosition(float x, float y) {
+// doesn't override this; TileContent / SnagContent do. skipLayout&1 (set only
+// during the spawn-in stage) skips the pixel snap so the actor can glide
+// sub-pixel; it settles onto the grid once spawn/move completes with the flag
+// clear.
+void MovableActor::setPosition(float x, float y, int skipLayout) {
     baseQuad.posX = x;
     baseQuad.posY = y;
-    baseQuad.snapToPixelGrid();
+
+    if ((skipLayout & 1) == 0) {
+        baseQuad.snapToPixelGrid();
+    }
 }
 
 // reconstructed from Ghidra FUN_100038f64. base setAlpha, just propagates
@@ -145,7 +151,7 @@ void MovableActor::update(float dt) {
         float shape = 1.0f - u * u;
         float lerpedX = (1.0f - shape) * spawnFromX + shape * spawnToX;
         float lerpedY = (1.0f - shape) * spawnFromY + shape * spawnToY;
-        setPosition(lerpedX, lerpedY);   // dispatches vtable[4] override
+        setPosition(lerpedX, lerpedY, 1);   // spawn-in: skip snap/relayout (binary mov w2,#1)
         return;
     }
 
@@ -168,7 +174,7 @@ void MovableActor::update(float dt) {
         float u = 0.5f - std::cos(t * MOVE_PI) * 0.5f;
         float lerpedX = u * targetX + (1.0f - u) * moveFromX;
         float lerpedY = u * targetY + (1.0f - u) * moveFromY;
-        setPosition(lerpedX, lerpedY);   // dispatches vtable[4] override
+        setPosition(lerpedX, lerpedY, 0);   // move: snap + relayout (binary mov w2,#0)
 
         if (moveT >= 1.0f) {
             // move complete: copy the target into moveFromX/Y so the next
@@ -208,6 +214,12 @@ void MovableActor::update(float dt) {
         }
 
         scaleOutT = t;
+
+        // skip the dispatch when the clamped value went negative (0x100038d80 fcmp / 0x100038d84 b.lt)
+        if (t < 0.0f) {
+            return;
+        }
+
         onScaleOut(t);
         return;
     }

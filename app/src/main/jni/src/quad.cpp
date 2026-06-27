@@ -227,10 +227,10 @@ void Quad::draw() {
             return;   // bbox doesn't overlap target rect
         }
     }
-    else if (hidden) {
-        return;
-    }
 
+    // non-animating quads draw unconditionally: the binary consults the hidden
+    // byte (0xC5) only inside the animating branch, never on this path. honoring
+    // a stale hidden here would wrongly drop a quad after its animation ended.
     glPushMatrix();
     glTranslatef(posX, posY, 0.0f);
 

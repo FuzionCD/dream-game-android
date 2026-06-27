@@ -19,7 +19,7 @@
 // ---- runtime perk pool (DAT_10007e290..+0x300) ----
 // FUN_100041aa4 registers ~50 entries via FUN_10004223c, each entry a
 // (perkType, levelMax, unlockCost, line1, line2) tuple. perkTypes observed
-// in the binary:
+// in the binary (extracted from FUN_100041aa4 by Claude in a prior session):
 //
 //   0x01  "Gain N {A} per turn while your {H} is less than half max {H}"  (levels 5/12/20)
 //   0x02  "Gain N {A}{D} per discarded {H}"                                (levels 0/5/10)

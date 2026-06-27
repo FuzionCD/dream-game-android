@@ -48,19 +48,20 @@ public:
 
     // FUN_10004ad80: set up visuals (particles, grid, overlays). args
     // gate the title-menu indicator buttons:
-    //   hasProgress: shop indicator (binary: 0 < shop.keys)
+    //   hasKeys: shop indicator (binary: 0 < shop.keys)
     //   hasAnyScore: leaderboard + achievements indicators (binary:
     //                FUN_100037e88(leaderboardMenu) = any of the 3
     //                ScoreHistory lists non-empty)
-    void initVisuals(bool hasProgress, bool hasAnyScore);
+    void initVisuals(bool hasKeys, bool hasAnyScore);
 
     // FUN_10004be04: draw all board elements
     void draw();
 
     // FUN_10004b574: update particle positions, rotation, fading, touch
-    // gameData = pointer to the game struct (for reading touch state)
-    // soundQueue = pointer to the game's sound queue (for triggering sounds)
-    void update(float dt, bool interactable, uint8_t* gameData = nullptr,
+    // soundQueue = pointer to the game's sound queue (for triggering sounds).
+    // touch state is read via getGame(); touch handling runs only when
+    // interactable and getGame() is available.
+    void update(float dt, bool interactable,
                 class SoundQueue* soundQueue = nullptr);
 
     // get the rotation pivot point (first tile's position)
@@ -111,13 +112,13 @@ public:
     uint8_t pad12412[6];                       // +0x12412
 
     // +0x12418: indicator pair 1
-    TileIcon indicatorObj1a;                    // +0x12418
-    TileIcon indicatorObj1b;                    // +0x124F0
+    TileIcon shopObjA;                    // +0x12418
+    TileIcon shopObjB;                    // +0x124F0
 
     // +0x125C8
-    bool indicatorGroup1;                      // +0x125C8
-    bool indicatorHighlight1;                  // +0x125C9 (mirror during touch)
-    bool indicatorClicked1;                    // +0x125CA (result flag, read by game update)
+    bool shopEnabled;                      // +0x125C8
+    bool shopHighlight;                  // +0x125C9 (mirror during touch)
+    bool shopClicked;                    // +0x125CA (result flag, read by game update)
     uint8_t pad125CB[5];                       // +0x125CB
 
     // +0x125D0: indicator pair 2

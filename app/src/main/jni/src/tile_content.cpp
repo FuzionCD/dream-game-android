@@ -231,12 +231,13 @@ void TileContent::setRawAndDisplayMagnitude(int magnitude) {
 // the table (1-digit form when displayedMagnitude <= 9, 2-digit form
 // otherwise), divides by 640 (= DAT_100059ecc) for screen space, adds the
 // adjusted baseQuad pos as the anchor.
-void TileContent::setPosition(float x, float y) {
+void TileContent::setPosition(float x, float y, int /*skipLayout*/) {
     constexpr float CLASS_X_OFFSET = 0.0015625f;  // DAT_100059ec4
     constexpr float CLASS_Y_OFFSET = 0.003125f;   // DAT_100059ec8
 
-    baseQuad.posX = x + CLASS_X_OFFSET;
-    baseQuad.posY = y + CLASS_Y_OFFSET;
+    // base call snaps the adjusted position (binary passes flag 0). the
+    // incoming flag is ignored: the tint is always repositioned afterward.
+    MovableActor::setPosition(x + CLASS_X_OFFSET, y + CLASS_Y_OFFSET, 0);
 
     repositionTintForMagnitude();
 }

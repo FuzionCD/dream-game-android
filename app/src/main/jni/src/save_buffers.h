@@ -72,7 +72,7 @@ struct RackTileSnapshot {
     int32_t   snagConsumedFlag;    // +0x24  SnagContent+0x490 (i16; only if snagHasExtras)
     int32_t   snagObsessionCount;  // +0x28  SnagContent+0x494 (i16; only if snagKind == 6)
     uint8_t   pad02C[4];           // +0x2C
-    std::vector<int64_t> decorations;  // +0x30..+0x47, active TileDecoration
+    std::vector<int64_t> decorations;  // +0x30..+0x47, active decoration
                                        //                (kind:i32, value:i32) pairs from
                                        //                tile.decorList (filter:
                                        //                suppressed == 0). packed as

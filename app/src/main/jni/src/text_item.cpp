@@ -187,7 +187,7 @@ void TextItem::init() {
 // difference from init(): glyphTablePtr is set explicitly (not zeroed) and
 // maxCharHeight is zeroed (the 8-byte store at +0x78). posX/posY/pad84 still
 // left untouched.
-void TextItem::init(int* glyphTable) {
+void TextItem::init(const BMFontTable* glyphTable) {
     glyphCount        = 0;
     outlineGlyphCount = 0;
     glyphTablePtr     = glyphTable;
@@ -241,24 +241,7 @@ void TextItem::setString(const char* s, int len) {
     if (sLen == 0) {
         // empty string; skip the walk, fall through to step 7.
     } else {
-        // glyphTablePtr aliases a BMFontTable (TextItem stores the table as
-        // int* because the panel constructors pass `&game->bmfontTable[idx]`
-        // through that slot, but the underlying type is fixed).
-        const BMFontTable* table =
-            reinterpret_cast<const BMFontTable*>(glyphTablePtr);
-        const uint8_t*     tableBase =
-            reinterpret_cast<const uint8_t*>(glyphTablePtr);
-
-        // per-char entries indexed by char code, stride = 0x24 bytes per entry,
-        // starting at the table base (not at entryBytes; the binary's reader
-        // uses `tableBase + c*0x24 + 0x08..0x28` to access the 9 floats per char,
-        // which lines up with the parser's writes at `entryBytes + c*36`).
-        //   entry+0x08..+0x10 : uvMin (2 floats)
-        //   entry+0x10..+0x18 : uvMax (2 floats)
-        //   entry+0x18..+0x1C : width  (1 float, also used for cursor advance)
-        //   entry+0x1C..+0x20 : height (1 float, fed into maxCharHeight)
-        //   entry+0x20..+0x28 : vertex offset (2 floats)
-        //   entry+0x28..+0x2C : char advance (1 float)
+        const BMFontTable* table = glyphTablePtr;
         float perTableMul = table->perTableMul;
 
         size_t glyphIdx = 0;
@@ -278,9 +261,10 @@ void TextItem::setString(const char* s, int len) {
                 continue;
             }
 
-            // resolve glyph entry at tableBase + (uint8_t)c * 0x24.
-            const uint8_t* entry = tableBase + (uint8_t)c * 0x24;
-            const float* entryF  = reinterpret_cast<const float*>(entry);
+            // resolve the glyph entry. the binary sign-extends the char (ldrsb)
+            // before indexing, so bytes >= 0x80 read before the entries array
+            // (benign; high bytes are rarely rendered).
+            const BMFontEntry& e = table->entries[(signed char)c];
 
             // diff check: if the char at glyphIdx differs from the last
             // setString call's result (or this is a fresh slot), re-set the
@@ -291,26 +275,24 @@ void TextItem::setString(const char* s, int len) {
 
             if (needsRebuild) {
                 Quad& q = glyphVec[glyphIdx].quad;
-                q.setTexCoords(entryF[2], entryF[3], entryF[4], entryF[5]);
-                q.setSize(entryF[6], entryF[7]);
-                q.addVertexOffset(entryF[8], entryF[9]);
+                q.setTexCoords(e.uvU, e.uvV, e.uvU2, e.uvV2);
+                q.setSize(e.sizeW, e.sizeH);
+                q.addVertexOffset(e.xoffsetHalved, e.yoffsetCenter);
             }
 
             // unconditional per-char updates (matches binary's flow at fd30
             // onward, which always runs regardless of the diff check).
-            float entryHeight = entryF[7];           // entry+0x1C
+            float entryHeight = e.sizeH;
             if (maxCharHeight < entryHeight) {
                 maxCharHeight = entryHeight;
             }
 
-            float halfW = entryF[6] * 0.5f;          // entry+0x18 = width
+            float halfW = e.sizeW * 0.5f;
             cursorX += halfW;
             glyphVec[glyphIdx].quad.posX = cursorX;
             glyphVec[glyphIdx].quad.posY = 0.0f;
 
-            // entry+0x28 = advance. with stride 0x24, this read overlaps into
-            // the next entry's first 4 bytes; see header comment above.
-            float adv = entryF[10];
+            float adv = e.xadvanceHalved;
             if (c == ' ') {
                 adv *= spaceMultiplier;
             }
@@ -355,11 +337,11 @@ void TextItem::draw() {
     glScalef(scaleX, scaleY, 0.0f);
     glRotatef(rotation, 0.0f, 0.0f, 1.0f);
 
-    // bind tex `*glyphTablePtr + 1`. binary derefs without null check;
-    // contract is that the panel-side init wrote a valid glyph table here
-    // before draw could fire (panels stay hidden, so draw doesn't run until
-    // a panel becomes visible, which only happens post-loadFonts).
-    bindTexture((GLuint)(*glyphTablePtr + 1));
+    // bind tex `glyphTablePtr->textureIndex + 1`. binary derefs without null
+    // check; contract is that the panel-side init wrote a valid glyph table
+    // here before draw could fire (panels stay hidden, so draw doesn't run
+    // until a panel becomes visible, which only happens post-loadFonts).
+    bindTexture((GLuint)(glyphTablePtr->textureIndex + 1));
 
     // primary pass: forward iter over the first `glyphCount` glyphs.
     for (int64_t i = 0; i < glyphCount; i++) {

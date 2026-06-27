@@ -133,6 +133,8 @@ const char* Perk::getDescriptionLine(int lineIdx) const {
     const PerkTypeEntry& entry = PERK_TYPE_TABLE[perkType];
     int levelIdx = perkLevel - 1;
 
+    // defensive bounds check (the binary reads the descriptor unguarded;
+    // perkLevel is caller-guaranteed in [1, levelCount]). kept for safety.
     if (levelIdx < 0 || levelIdx >= entry.levelCount) {
         return "";
     }
