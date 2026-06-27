@@ -27,6 +27,10 @@ namespace AudioEngine {
     void stopMusic();
     void setMusicVolume(float volume);
 
+    // true while a music track is actively playing (drives the playlist
+    // advance: when a track finishes, the controller picks the next one).
+    bool isPlayingMusic();
+
     // app lifecycle (matching original's alcSuspendContext / alcProcessContext)
     void suspend();
     void resume();

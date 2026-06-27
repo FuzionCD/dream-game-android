@@ -28,7 +28,6 @@ void MusicController::init() {
     fadeStartVolume = 0.0f;
     fadeProgress = 0.0f;
     fadeComplete = false;
-    lastAppliedTrack = -1;
 
     for (int i = 0; i < MUSIC_STACK_MAX; i++) {
         trackStack[i] = -1;
@@ -68,39 +67,85 @@ void MusicController::resetFade() {
     fadeComplete = false;
 }
 
-// reconstructed from FUN_10000860c
-// pushes a track onto the stack at a random position.
-// the original uses a linked list and inserts at a random index
-// determined by FUN_1000570ec(0, listSize, 0). we replicate
-// the random insertion into our array-based stack.
+// insert trackIndex at array position pos, shifting [pos, stackSize) up by one.
+void MusicController::insertTrackAt(int pos, int trackIndex) {
+
+    for (int i = stackSize; i > pos; --i) {
+        trackStack[i] = trackStack[i - 1];
+    }
+
+    trackStack[pos] = trackIndex;
+    stackSize++;
+}
+
+// reconstructed from FUN_10000860c. insert a track near the front of the
+// playlist. two-stage RNG (stream 0): an empty list or roll1 == 0 inserts at
+// the front; otherwise roll2 picks how many steps back from the tail to walk,
+// and the track goes just before that node.
 void MusicController::setTrack(int trackIndex) {
 
     if (trackIndex < 0 || trackIndex >= MUSIC_TRACK_COUNT) {
         return;
     }
 
+    // the binary's linked list is unbounded; our array caps at MUSIC_STACK_MAX.
     if (stackSize >= MUSIC_STACK_MAX) {
         return;
     }
 
-    if (stackSize == 0) {
-        // empty stack: just push
-        trackStack[0] = trackIndex;
-        stackSize = 1;
-    } else {
-        // insert at a random position (FUN_10000860c, stream 0, cosmetic)
-        int insertPos = rngInt(0, stackSize, 0);
+    int pos = 0;
 
-        // shift elements to make room
-        for (int i = stackSize; i > insertPos; i--) {
-            trackStack[i] = trackStack[i - 1];
+    if (stackSize > 0) {
+        int roll1 = rngInt(0, stackSize, 0);
+
+        if (roll1 != 0) {
+            int roll2 = rngInt(0, stackSize - 1, 0);
+            pos = (stackSize - 1) - roll2;
         }
-
-        trackStack[insertPos] = trackIndex;
-        stackSize++;
     }
 
-    changeFlag = true;
+    insertTrackAt(pos, trackIndex);
+}
+
+// fade out the current track and queue a random gameplay track (1..N-1) in its
+// place. the fade-out completing is what swaps to the new track (applyToAudio),
+// giving a crossfade on each level change.
+void MusicController::crossfadeToRandomGameplayTrack() {
+    resetFade();
+    setTrack(rngInt(1, MUSIC_TRACK_COUNT - 1, 0));
+}
+
+// reconstructed from FUN_1000086e0. pop the playing track (tail), recycle it
+// into the front half so it won't replay soon, and return the new tail to play
+// next. returns -1 when the list is empty or the volume is zero.
+int MusicController::advanceTrack() {
+
+    if (stackSize == 0 || volume <= 0.0f) {
+        return -1;
+    }
+
+    // pop the tail (the track that just finished).
+    int track = trackStack[stackSize - 1];
+    stackSize--;
+
+    // recycle it. fewer than 2 entries or roll1 == 0 goes to the front; else
+    // roll2 in [count/2, count-1] walks back from the tail, keeping the track
+    // out of the back half so it isn't picked again immediately.
+    int pos = 0;
+
+    if (stackSize >= 2) {
+        int roll1 = rngInt(0, stackSize, 0);
+
+        if (roll1 != 0) {
+            int roll2 = rngInt(stackSize / 2, stackSize - 1, 0);
+            pos = (stackSize - 1) - roll2;
+        }
+    }
+
+    insertTrackAt(pos, track);
+
+    // the new tail is the next track to play.
+    return trackStack[stackSize - 1];
 }
 
 // reconstructed from FUN_1000085a4
@@ -115,8 +160,8 @@ float MusicController::getVolume() {
         return 0.0f;
     }
 
-    // volume squared * per-track multiplier for the top-of-stack track.
-    int topTrack = trackStack[0];
+    // volume squared * per-track multiplier for the playing (tail) track.
+    int topTrack = trackStack[stackSize - 1];
 
     if (topTrack < 0 || topTrack >= MUSIC_TRACK_COUNT) {
         return 0.0f;
@@ -156,55 +201,41 @@ bool MusicController::consumeChangeFlag() {
 int MusicController::getCurrentTrack() const {
 
     if (stackSize > 0) {
-        return trackStack[0];
+        return trackStack[stackSize - 1];
     }
 
     return -1;
 }
 
-// apply the current music state to SDL_mixer.
-// in the ios version, GameViewController does this each frame after
-// calling the game's update. it reads getVolume() and the current track,
-// then calls SoundEngine methods accordingly.
+// per-frame music driver (the GameViewController::update music block in iOS).
+// the playing track loops, so during a level this only pushes volume changes;
+// it switches tracks when a fade-out completes (a level / screen change) or when
+// nothing is playing yet (startup, or recovering from a muted gap).
 void MusicController::applyToAudio() {
 
-    if (!changeFlag) {
+    // FUN_100008884: consume the fade-complete flag. a completed fade forces a
+    // switch even though SDL may still report the old track as playing.
+    bool fadeJustCompleted = fadeComplete;
+    fadeComplete = false;
+
+    if (!fadeJustCompleted && AudioEngine::isPlayingMusic()) {
+        // still playing: just push volume changes (handles the fade ramp).
+        if (consumeChangeFlag()) {
+            AudioEngine::setMusicVolume(getVolume());
+        }
+
         return;
     }
 
-    changeFlag = false;
+    // fade completed, or nothing playing: switch to the queued track.
+    int track = advanceTrack();
 
-    int topTrack = getCurrentTrack();
-    float vol = getVolume();
-
-    // if the track changed (and we're not mid-fade), switch the music
-    if (topTrack != lastAppliedTrack && !fading) {
-
-        if (topTrack >= 0 && topTrack < MUSIC_TRACK_COUNT) {
-            AudioEngine::playMusic(sMusicFiles[topTrack], vol);
-            SDL_Log("MusicController: playing track %d (%s) vol %.2f",
-                    topTrack, sMusicFiles[topTrack], vol);
-        } else {
-            AudioEngine::stopMusic();
-            SDL_Log("MusicController: stopped music");
-        }
-
-        lastAppliedTrack = topTrack;
+    if (track < 0) {
+        // empty list or muted: the binary calls stopMusic each frame here (no
+        // log, since muted gameplay would otherwise flood it every frame).
+        AudioEngine::stopMusic();
     } else {
-        // just update volume (handles fading)
-        AudioEngine::setMusicVolume(vol);
-    }
-
-    // if fade just completed, start the new track
-    if (fadeComplete) {
-        fadeComplete = false;
-
-        if (topTrack >= 0 && topTrack < MUSIC_TRACK_COUNT) {
-            vol = getVolume();
-            AudioEngine::playMusic(sMusicFiles[topTrack], vol);
-            SDL_Log("MusicController: fade complete, now playing track %d vol %.2f", topTrack, vol);
-        }
-
-        lastAppliedTrack = topTrack;
+        AudioEngine::playMusic(sMusicFiles[track], getVolume());
+        SDL_Log("MusicController: playing track %d (%s)", track, sMusicFiles[track]);
     }
 }

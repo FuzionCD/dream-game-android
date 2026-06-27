@@ -12742,6 +12742,15 @@ void GameBoard::initLevelContent() {
         }
     }
 
+    // crossfade to a fresh random track on each new level past the first, so
+    // completing a level rewards the player with new music. the first level's
+    // track comes from Game::syncMusic at gameplay start / resume. intentional
+    // gameplay deviation: the binary cycles tracks when one finishes, not on
+    // level change.
+    if (worldLevelIndex > 1) {
+        getGame()->musicController.crossfadeToRandomGameplayTrack();
+    }
+
     SDL_Log("GameBoard::initLevelContent() complete (level=%d, reserve=%lld, tileVariant=%d)",
             worldLevelIndex, (long long)tileReserve.size(), gridLayout);
 }

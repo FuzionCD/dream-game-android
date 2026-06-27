@@ -227,11 +227,17 @@ void AudioEngine::playMusic(const char* filename, float volume) {
 
     // sdl_mixer music volume is 0-128
     Mix_VolumeMusic((int)(volume * 128.0f));
+    // loop the track for the whole level; the controller swaps tracks on level /
+    // screen changes (via resetFade), not when a track ends.
     Mix_PlayMusic(sCurrentMusic, -1);
 }
 
 void AudioEngine::stopMusic() {
     Mix_HaltMusic();
+}
+
+bool AudioEngine::isPlayingMusic() {
+    return Mix_PlayingMusic() != 0;
 }
 
 void AudioEngine::setMusicVolume(float volume) {
