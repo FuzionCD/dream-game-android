@@ -4,7 +4,7 @@
 #include "event_slot.h"
 #include "quad.h"
 #include "title_menu.h"  // for TileIcon
-#include <cstddef>       // offsetof, sizing assertions
+#include <cstddef>
 #include <cstdint>
 #include <list>
 #include <vector>
@@ -18,47 +18,44 @@
 //   helpers:        FUN_10000bab8 (conditional icon setup),
 //                   FUN_10000bb60 (stat bar layout)
 //
-// GameplayHUD lives at GameBoard+0x6418 (0x1E58 bytes).
+// GameplayHUD lives at GameBoard.hud (0x1E58 bytes).
 //
-// the parent pointer at +0x000 isn't GameBoard directly; it's the DetailPanel
-// at GameBoard+0x4408. various helpers traverse from HUD->parent to read
+// the parent pointer isn't GameBoard directly; it's the DetailPanel
+// at GameBoard.detailPanel. various helpers traverse from HUD->parent to read
 // DetailPanel state.
 //
 // renders:
 //   - status bar quad across the top
-//   - 4 stat-bar quads (configured by FUN_10000bb60 from values at +0x968/+0x96c)
+//   - 4 stat-bar quads (configured by FUN_10000bb60 from targetHealthRatio / currentHealthRatio)
 //   - 6 button-frame / icon quads (button frames, large frame, player + menu icons,
 //     conditional icon)
 //   - 10 main markers (small dots) and 10 indicator markers (small dots)
 //   - 3 ColorTints layered on top
 //   - 2 overlay quads drawn on texture 8 when overlay progress > 0
-//   - a linked list of dynamic items at +0x1C58
+//   - a linked list of dynamic items (removalAnims)
 //
 // each "marker slot" is 0xE0 bytes (Quad 0xD8 + 8 bytes trailing fade state).
 
 struct MarkerSlot {
-    Quad    quad;             // +0x000..+0x0D7 (0xD8; owns anim rect at +0xC8)
-    float   fadeT;            // +0x0D8 (0..1 fade-in progress; FUN_10000c568)
-    float   fadeDelay;        // +0x0DC (countdown-to-start; ramp seeded by FUN_10000cf34)
+    Quad    quad;             // (0xD8; owns anim rect)
+    float   fadeT;            // (0..1 fade-in progress; FUN_10000c568)
+    float   fadeDelay;        // (countdown-to-start; ramp seeded by FUN_10000cf34)
 };
-static_assert(sizeof(MarkerSlot) == 0xE0, "MarkerSlot must be 0xE0 bytes");
 
 // discard-staging entry, one per rack tile the player has staged for
 // discard. carries the floating quad that bobs above the rack column while
 // staged, plus a back-pointer to the rack slot and a flag gating whether
 // the next commit pass will discard it.
 struct DiscardEntry {
-    Quad    quad;             // +0x000..+0x0D7 (floating visual above rack column; 0xD8 bytes)
-    int32_t rackSlot;         // +0x0D8 (rack column this entry stages)
-    uint8_t staged;           // +0x0DC (0 = idle / skipped this batch, 1 = discard on commit)
-    uint8_t pad0DD[3];        // +0x0DD..+0x0DF
+    Quad    quad;             // (floating visual above rack column; 0xD8 bytes)
+    int32_t rackSlot;         // (rack column this entry stages)
+    uint8_t staged;           // (0 = idle / skipped this batch, 1 = discard on commit)
 };
-static_assert(sizeof(DiscardEntry) == 0xE0, "DiscardEntry must be 0xE0 bytes");
 
 class GameplayHUD {
 public:
     // FUN_10000b160: full constructor. takes a parent pointer (the DetailPanel
-    // at GameBoard+0x4408 in the binary), sets up all 12 standalone quads,
+    // at GameBoard.detailPanel in the binary), sets up all 12 standalone quads,
     // 3 color tints, 10+10 marker arrays, the linked-list sentinel, and the
     // 2 overlay quads. matches the binary line-for-line.
     void init(void* parent);
@@ -102,7 +99,7 @@ public:
     // burst) and fires sound 0x34 once per beat.
     void tickDeathHeart(float dt);
 
-    // configure the conditionalIcon (HUD+0x880) for one of three states.
+    // configure the conditionalIcon for one of three states.
     // anchors to largeButtonFrame's posX/Y plus a small Y nudge
     // (HUD_COND_Y_NUDGE = -0.003125f) in all states. ports of:
     //   FUN_10000bab8 (Default)        discard button idle.
@@ -134,7 +131,7 @@ public:
     // FUN_10000d3a0, visual ATK/DEF swap. updates tintAttack to show
     // newAtkValue at the resting ATK position, tintDefence to show
     // newDefValue at the resting DEF position, then swaps their current
-    // anchor positions and resets fieldA18 = 0 to kick the slide
+    // anchor positions and resets statTintSwapT = 0 to kick the slide
     // animation in update(). called by snag 5 (Mania) one-shot in the
     // rack walk after the player ATK/DEF stats have already been swapped.
     void swapAtkDefDisplays(int newAtkValue, int newDefValue);
@@ -168,8 +165,8 @@ public:
     // for this to clear before pointing hint 0x14 at the event tray.
     bool anyEventSlotSlidingIn() const;
 
-    // FUN_10000dcc8, the mainQuad position (posX/posY at EventSlot+0xb8/
-    // +0xbc) of the first non-empty event tray slot, or (0, 0) if empty.
+    // FUN_10000dcc8, the mainQuad position (posX/posY) of the first
+    // non-empty event tray slot, or (0, 0) if empty.
     // paired-float return; Ghidra drops the s1 (Y), recovered from disasm.
     void firstEventSlotPos(float& outX, float& outY) const;
 
@@ -186,15 +183,14 @@ public:
     bool canPushEventCharge(int eventTypeKey);
 
     // FUN_10000d0c8, clear the control-marker bank (zeros 13 bytes at
-    // +0x1BB0..+0x1BBC = controlCount + controlQueuedDelta + controlReceived
+    // = controlCount + controlQueuedDelta + controlReceived
     // Total + controlAdvanceBusy + first byte of controlDrainPhase). called
     // by FUN_100025238's case 0x51 (Discord) when controlReceivedTotal
     // % 10 != 0 (a charge is mid-fill, so Discord resets it).
     void clearCTRLBank();
 
-    // FUN_10000d0b4, clear the xp-marker bank (zeros 13 bytes at
-    // +0x12E0..+0x12EC = xpCount + xpQueuedDelta + xpReceivedTotal +
-    // xpAdvanceBusy + first byte of xpDrainPhase). called from
+    // FUN_10000d0b4, clear the xp-marker bank (zeros xpCount + xpQueuedDelta +
+    // xpReceivedTotal + xpAdvanceBusy + first byte of xpDrainPhase). called from
     // FUN_1000161fc (Level::generate) section 7 to reset per-run XP state.
     void clearXPBank();
 
@@ -210,10 +206,9 @@ public:
 
     // --- byte-exact struct fields ---
 
-    // +0x0000
-    void* parent;                     // back-ref to DetailPanel (GameBoard+0x4408)
+    void* parent;                     // back-ref to DetailPanel (GameBoard.detailPanel)
 
-    // +0x0008..+0x043F: 5 stat-bar quads, each 0xD8 (TileIcon stride).
+    // 5 stat-bar quads, each 0xD8 (TileIcon stride).
     // the 4 health-bar quads stack to visualize currentHealth / maxHealth.
     // layoutStatBars (FUN_10000bb60) sizes/positions them per the current
     // ratio. roles confirmed against the binary:
@@ -223,13 +218,13 @@ public:
     //   healthBarOverflow = damage-in-progress overlay above filled (col B,
     //                       different color, highlights the loss)
     //   healthBarTip      = a 2-pixel cap at the top of filled (col A)
-    TileIcon statusBar;               // +0x0008  (top status bar)
-    TileIcon healthBarFill;           // +0x00E0  (filled portion, height = filled)
-    TileIcon healthBarGain;           // +0x01B8  (heal segment, col A)
-    TileIcon healthBarOverflow;       // +0x0290  (damage segment, col B)
-    TileIcon healthBarTip;            // +0x0368  (top cap, height = min(filled, 2))
+    TileIcon statusBar;               // (top status bar)
+    TileIcon healthBarFill;           // (filled portion, height = filled)
+    TileIcon healthBarGain;           // (heal segment, col A)
+    TileIcon healthBarOverflow;       // (damage segment, col B)
+    TileIcon healthBarTip;            // (top cap, height = min(filled, 2))
 
-    // +0x0440: 2 packed ints managed by FUN_10000cb84 (queryReleaseTouch).
+    // 2 packed ints managed by FUN_10000cb84 (queryReleaseTouch).
     //   engagementState  = which header the touch is currently captured on
     //                      (verified on device by tapping each):
     //                      0 = none / EventSlot
@@ -243,115 +238,106 @@ public:
     //                      written on touch-down hit, restored to 0 on release.
     //   publishedState   = engagementState when the release lands on the same
     //                      header. read by GameBoard::update to dispatch the click.
-    int32_t engagementState;          // +0x0440
-    int32_t publishedState;           // +0x0444
+    int32_t engagementState;
+    int32_t publishedState;
 
-    // +0x0448..+0x0957: 6 button-frame and icon TileIcons
-    TileIcon buttonFrame1;            // +0x0448
-    TileIcon buttonFrame2;            // +0x0520
-    TileIcon largeButtonFrame;        // +0x05F8
-    TileIcon playerIcon;              // +0x06D0
-    TileIcon menuIcon;                // +0x07A8
-    TileIcon conditionalIcon;         // +0x0880  (UV/pos set by FUN_10000bab8)
+    // 6 button-frame and icon TileIcons
+    TileIcon buttonFrame1;
+    TileIcon buttonFrame2;
+    TileIcon largeButtonFrame;
+    TileIcon playerIcon;
+    TileIcon menuIcon;
+    TileIcon conditionalIcon;         // (UV/pos set by FUN_10000bab8)
 
-    // +0x0958
-    bool conditionalFlag;             // +0x0958  (gates conditionalIcon + largeButtonFrame draw)
-    uint8_t pad959[3];                // +0x0959
+    bool conditionalFlag;             // (gates conditionalIcon + largeButtonFrame draw)
 
     // health values driving both the center HP number and the 4 health-bar
     // quads. setHealth (FUN_10000d18c) updates currentHealth and rebuilds
     // tintHealth; setMaxHealth (FUN_10000d228) updates maxHealth and recomputes
     // the ratios. layoutStatBars consumes targetHealthRatio / currentHealthRatio.
-    int32_t currentHealth;            // +0x095C  (numerator; init = 1)
-    int32_t maxHealth;                // +0x0960  (denominator; init = 1)
-    float previousHealthRatio;        // +0x0964
-    float targetHealthRatio;          // +0x0968  (= currentHealth/maxHealth)
-    float currentHealthRatio;         // +0x096C  (animated toward target)
+    int32_t currentHealth;            // (numerator; init = 1)
+    int32_t maxHealth;                // (denominator; init = 1)
+    float previousHealthRatio;
+    float targetHealthRatio;          // (= currentHealth/maxHealth)
+    float currentHealthRatio;         // (animated toward target)
 
-    // +0x0970..+0x0A17: 3 ColorTints (each 0x38). the 3 tints display the
+    // 3 ColorTints (each 0x38). the 3 tints display the
     // player's combat stats numerically at the top of the screen.
-    ColorTint tintAttack;             // +0x0970  (top-left ATK number; FUN_10000d0dc)
-    ColorTint tintDefence;            // +0x09A8  (top-right DEF number; FUN_10000d134)
-    ColorTint tintHealth;             // +0x09E0  (top-center HP number; FUN_10000d18c)
+    ColorTint tintAttack;             // (top-left ATK number; FUN_10000d0dc)
+    ColorTint tintDefence;            // (top-right DEF number; FUN_10000d134)
+    ColorTint tintHealth;             // (top-center HP number; FUN_10000d18c)
                                        //          init color 0xff64ffff alpha 0x78
 
-    // +0x0A18: ATK/DEF tint slide-animation phase. init 1.0 (settled).
+    // ATK/DEF tint slide-animation phase. init 1.0 (settled).
     // swapAtkDefDisplays rewinds it to 0; update() drives the tint cross-slide
     // while it's < 1.0 (advances by 2*dt per frame), then it rests at 1.0.
-    float fieldA18;                   // +0x0A18
-    uint8_t padA1C[4];                // +0x0A1C
+    float statTintSwapT;                   // level-transition stat-tint swap slide progress (0..1; 1 = settled)
 
-    // +0x0A20..+0x12DF: 10 XP markers on the right side of the screen (stride 0xE0).
+    // 10 XP markers on the right side of the screen (stride 0xE0).
     // count drawn = xpCount; each lit marker = 1 experience point earned.
     MarkerSlot xpMarkers[10];
 
-    // +0x12E0..+0x12EF: xp marker bank companion fields. drives the
+    // xp marker bank companion fields. drives the
     // FUN_10000cf34 slot-advance animation: queueing logic when an
     // animation is already in flight (xpAdvanceBusy = 1), running total
     // of every advance request received this level (for the level-up
     // detection path), and a 1-byte "busy" gate that the animation
     // tick clears once it finishes.
-    int32_t xpCount;                  // +0x12E0  (init = 0)
-    int32_t xpQueuedDelta;            // +0x12E4  (deltas pushed while busy)
-    int32_t xpReceivedTotal;          // +0x12E8  (running sum across the level)
-    uint8_t xpAdvanceBusy;            // +0x12EC  (set by FUN_10000cf34, cleared
+    int32_t xpCount;                  // (init = 0)
+    int32_t xpQueuedDelta;            // (deltas pushed while busy)
+    int32_t xpReceivedTotal;          // (running sum across the level)
+    uint8_t xpAdvanceBusy;            // (set by FUN_10000cf34, cleared
                                        //           by tick when no slot animating)
-    uint8_t xpDrainPhase;             // +0x12ED  (FUN_10000c568 enters this when
+    uint8_t xpDrainPhase;             // (FUN_10000c568 enters this when
                                        //           count >= 10 + queue pending;
                                        //           slots reverse-animate out)
-    uint8_t pad12EE[2];               // +0x12EE..+0x12EF
 
-    // +0x12F0..+0x1BAF: 10 CONTROL markers on the left side (stride 0xE0).
+    // 10 CONTROL markers on the left side (stride 0xE0).
     // count drawn = controlCount; each lit marker = 1 control point.
     MarkerSlot controlMarkers[10];
 
-    // +0x1BB0..+0x1BC7: control marker bank companion fields. same shape
+    // control marker bank companion fields. same shape
     // as the xp bank: count + queued + total + busy + drainPhase, then the
-    // two marker-bank "full" output flags at +0x1BC0/+0x1BC1.
-    int32_t controlCount;             // +0x1BB0  (init = 0)
-    int32_t controlQueuedDelta;       // +0x1BB4
-    int32_t controlReceivedTotal;     // +0x1BB8
-    uint8_t controlAdvanceBusy;       // +0x1BBC  (busy gate, mirrors xpAdvanceBusy)
-    uint8_t controlDrainPhase;        // +0x1BBD  (mirrors xpDrainPhase)
-    uint8_t pad1BBE[2];               // +0x1BBE..+0x1BBF
+    // two marker-bank "full" output flags (levelUpReady / itemChoiceReady).
+    int32_t controlCount;             // (init = 0)
+    int32_t controlQueuedDelta;
+    int32_t controlReceivedTotal;
+    uint8_t controlAdvanceBusy;       // (busy gate, mirrors xpAdvanceBusy)
+    uint8_t controlDrainPhase;        // (mirrors xpDrainPhase)
 
     // marker-bank "full" output signals. the marker tick (FUN_10000c568)
     // sets the matching flag to 1 once its bank reaches 10 lit markers and
-    // begins draining. GameBoard::update reads each flag (as GameBoard+0x7FD8
-    // / +0x7FD9), clears it, and opens the corresponding reward panel.
-    uint8_t levelUpReady;             // +0x1BC0  XP bank full -> LevelUpPanel (= GameBoard+0x7FD8)
-    uint8_t itemChoiceReady;          // +0x1BC1  CTRL bank full -> ItemChoicePanel (= GameBoard+0x7FD9)
-    uint8_t pad1BC2[6];               // +0x1BC2..+0x1BC7
+    // begins draining. GameBoard::update reads each flag, clears it, and
+    // opens the corresponding reward panel.
+    uint8_t levelUpReady;             // XP bank full -> LevelUpPanel
+    uint8_t itemChoiceReady;          // CTRL bank full -> ItemChoicePanel
 
-    // +0x1BC8: the event tray. 4 fixed slots, each 0x20 bytes. each slot
+    // the event tray. 4 fixed slots, each 0x20 bytes. each slot
     // holds an EventSlot* + animation state used by addEventSlot to
     // tween the slot icon from off-screen to its tray position, and by
     // removeEventSlot to compact remaining slots leftward when one is
     // consumed. tray order is left-to-right; null slotPtr = empty slot.
     struct Entry {
-        EventSlot* slotPtr;       // +0x00  null = empty
-        float      currentX;      // +0x08  animation current X (lerped each frame)
-        float      currentY;      // +0x0C  animation current Y (lerped each frame)
-        float      targetX;       // +0x10  resting X position in the tray
-        float      targetY;       // +0x14  resting Y position in the tray (= 0.1934)
-        float      progress;      // +0x18  animation progress 0..1; init = 1.0
+        EventSlot* slotPtr;       // null = empty
+        float      currentX;      // animation current X (lerped each frame)
+        float      currentY;      // animation current Y (lerped each frame)
+        float      targetX;       // resting X position in the tray
+        float      targetY;       // resting Y position in the tray (= 0.1934)
+        float      progress;      // animation progress 0..1; init = 1.0
                                   //         on empty slots (animation done),
                                   //         reset to 0.0 on install (slide-in start)
-        float      shiftDelay;    // +0x1C  staggered delay used by compaction
+        float      shiftDelay;    // staggered delay used by compaction
                                   //         (= i * 0.1 for the i'th shifted slot)
     };
-    static_assert(sizeof(Entry) == 0x20, "EventSlotEntry must be 0x20 bytes");
 
-    Entry eventTray[4];               // +0x1BC8..+0x1C47
+    Entry eventTray[4];
 
-    // +0x1C48
-    int32_t selectedItem;             // +0x1C48  (init = -1)
-    uint8_t pad1C4C[4];               // +0x1C4C
+    int32_t selectedItem;             // (init = -1)
     // queryReleaseTouch's "release on EventSlot" output. when a touch is
     // successfully released on an event slot, this is set to the slot's
     // pointer (the value at eventTray[selectedItem].slotPtr); the
     // GameBoard update consumer reads it to know which event was activated.
-    EventSlot* releasedEventSlot;     // +0x1C50  (init = nullptr)
+    EventSlot* releasedEventSlot;     // (init = nullptr)
 
     // ---- removal-animation list ----
     //
@@ -363,8 +349,8 @@ public:
     // EventSlot and erases the entry.
     //
     // the binary allocates each node via operator_new(0x30) and links it
-    // into a doubly-linked list with sentinel anchor at HUD+0x1C58. layout
-    // is byte-identical to a libc++ std::list<RemovalAnim> on aarch64:
+    // into a doubly-linked list with a sentinel anchor. layout is
+    // byte-identical to a libc++ std::list<RemovalAnim> on aarch64:
     //
     //   list = { sentinel_prev (8) | sentinel_next (8) | size_t size (8) }
     //   node = { node_prev (8)     | node_next (8)     | RemovalAnim (0x20) }
@@ -372,13 +358,13 @@ public:
     // so we port as the real C++ type. iteration, push_back, and erase
     // all match the binary's operations 1:1.
     struct RemovalAnim {
-        EventSlot* slot;              // +0x00  the slot being removed
-        float      currentX;          // +0x08  current animated X
-        float      currentY;          // +0x0C  current animated Y
-        float      targetX;           // +0x10  destination X (= slot.posX)
-        float      targetY;           // +0x14  destination Y (= slot.posY - 0.15625)
-        float      progress;          // +0x18  animation progress 0..1
-        float      shiftDelay;        // +0x1C  countdown before progress
+        EventSlot* slot;              // the slot being removed
+        float      currentX;          // current animated X
+        float      currentY;          // current animated Y
+        float      targetX;           // destination X (= slot.posX)
+        float      targetY;           // destination Y (= slot.posY - 0.15625)
+        float      progress;          // animation progress 0..1
+        float      shiftDelay;        // countdown before progress
                                       //         starts advancing (0 = start
                                       //         immediately). same offset
                                       //         + semantics as Entry's
@@ -386,16 +372,15 @@ public:
                                       //         per-entry animator
                                       //         (FUN_10000c9d0) is shared.
     };
-    static_assert(sizeof(RemovalAnim) == 0x20, "RemovalAnim must be 0x20 bytes");
 
-    std::list<RemovalAnim> removalAnims;   // +0x1C58..+0x1C6F  (24 bytes)
+    std::list<RemovalAnim> removalAnims;
 
-    // +0x1C70..+0x1E1F: 2 overlay TileIcons (stride 0xD8). drawn on tex 8 when
+    // 2 overlay TileIcons (stride 0xD8). drawn on tex 8 when
     // overlayProgress > 0. FUN_10000d9ac resets them.
-    TileIcon overlayQuad1;            // +0x1C70
-    TileIcon overlayQuad2;            // +0x1D48
+    TileIcon overlayQuad1;
+    TileIcon overlayQuad2;
 
-    // +0x1E20: death-heart overlay state. when overlayProgress > 0, draw()
+    // death-heart overlay state. when overlayProgress > 0, draw()
     // binds tex 8 and renders both overlay quads (the broken-beating-heart
     // visual that pulses while the player watches Nemesis advance). the
     // tick is GameplayHUD::tickDeathHeart (= FUN_10000c794): overlayState
@@ -403,14 +388,13 @@ public:
     // cyclic 0..1 beat phase driven by fmodf each frame.
     // FUN_10000d9ac(this, 1) clears overlayProgress; FUN_10000d9ac(this, 0)
     // only clears overlayState.
-    float overlayProgress;            // +0x1E20  (init = 0; 0..1 fade-in ramp)
-    float pulseTimer;                 // +0x1E24  (cyclic 0..1 heartbeat phase)
-    uint8_t overlayState;             // +0x1E28  (init = 0; 1 = death active)
-    uint8_t touchReEntryGuard;        // +0x1E29  (FUN_10000cb84 sets to 1 on first
+    float overlayProgress;            // (init = 0; 0..1 fade-in ramp)
+    float pulseTimer;                 // (cyclic 0..1 heartbeat phase)
+    uint8_t overlayState;             // (init = 0; 1 = death active)
+    uint8_t touchReEntryGuard;        // (FUN_10000cb84 sets to 1 on first
                                       //           call this gesture, clears on release.
                                       //           prevents engagement-branch reentry.)
-    bool playSoundNextFill;           // +0x1E2A  (init = 1; read by FUN_10000c568)
-    uint8_t pad1E2B[5];               // +0x1E2B..+0x1E2F
+    bool playSoundNextFill;           // (init = 1; read by FUN_10000c568)
 
     // discard-staging queue. each entry is a floating quad anchored above
     // a rack column with a back-pointer to the staged rack slot. case-3 of
@@ -418,9 +402,8 @@ public:
     // calling discardRackTile per staged entry and feeding Nemesis.
     // selectedItem (below) optionally decorates each tap with extra
     // effects but the discard itself is the universal action.
-    std::vector<DiscardEntry> pendingDiscards;  // +0x1E30..+0x1E47 (libc++ begin/end/cap)
-    float    pendingDiscardBobTimer;            // +0x1E48 (drives the per-entry bob easing)
-    uint8_t  pad1E4C[4];                        // +0x1E4C..+0x1E4F (alignment for the 8-byte ptr below)
+    std::vector<DiscardEntry> pendingDiscards;
+    float    pendingDiscardBobTimer;            // (drives the per-entry bob easing)
 
     // pointer to the kind-int of the Event the player has selected to
     // fire next (Events are the one-shot charged specials gated by the
@@ -429,35 +412,11 @@ public:
     // dispatcher fires it next: FUN_10001d51c on a rack-tile tap,
     // FUN_100020f80 on the Event-button release, or the case-3 commit on
     // gesture-release with staged tiles. null when no Event is queued.
-    int32_t* selectedEvent;           // +0x1E50 (= GameBoard+0x8268)
+    int32_t* selectedEvent;
 };
-static_assert(sizeof(GameplayHUD) == 0x1E58, "GameplayHUD must be exactly 0x1E58 bytes");
-static_assert(sizeof(std::vector<DiscardEntry>) == 0x18,
-              "std::vector layout must be 0x18 (libc++ begin/end/cap)");
-static_assert(sizeof(std::list<GameplayHUD::RemovalAnim>) == 0x18,
-              "std::list layout must be 0x18 (libc++ sentinel pair + size)");
-static_assert(offsetof(GameplayHUD, eventTray)       == 0x1BC8,
-              "eventTray must be at HUD+0x1BC8");
-static_assert(offsetof(GameplayHUD, releasedEventSlot) == 0x1C50,
-              "releasedEventSlot must be at HUD+0x1C50");
-static_assert(offsetof(GameplayHUD, removalAnims)    == 0x1C58,
-              "removalAnims must be at HUD+0x1C58");
-static_assert(offsetof(GameplayHUD, overlayProgress) == 0x1E20,
-              "overlayProgress must be at HUD+0x1E20");
-static_assert(offsetof(GameplayHUD, pulseTimer)      == 0x1E24,
-              "pulseTimer must be at HUD+0x1E24");
-static_assert(offsetof(GameplayHUD, overlayState)    == 0x1E28,
-              "overlayState must be at HUD+0x1E28");
-static_assert(offsetof(GameplayHUD, pendingDiscards) == 0x1E30,
-              "pendingDiscards must be at HUD+0x1E30 (= GameBoard+0x8248)");
-static_assert(offsetof(GameplayHUD, selectedEvent) == 0x1E50,
-              "selectedEvent must be at HUD+0x1E50 (= GameBoard+0x8268)");
 
 // constants from FUN_10000b160 / FUN_10000bab8 / FUN_10000bb60
 namespace GameplayHUDConstants {
-    // despite the historical "Y_BIG" naming, this is the X-OFFSET applied to
-    // buttonFrame2 to put it on the right side of the screen. (the binary's
-    // formula adds it to posX, not posY; confirmed against FUN_10000b160.)
     inline constexpr float HUD_BUTTON_X_RIGHT = 0.8843750f;  // DAT_100059ca0
     inline constexpr float HUD_ICON_NUDGE    = -0.0015625f;  // DAT_100059ca4
     inline constexpr float HUD_MARKER_X_IND  =  167.5f;      // DAT_100059ca8

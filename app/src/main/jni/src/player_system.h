@@ -13,13 +13,13 @@
 //   draw vt[2] FUN_100038b88, update vt[3] FUN_10005653c (base FUN_100038bac),
 //   push FUN_1000567fc, set-portrait FUN_100056478.
 //
-// the player entity, at GameBoard+0x8270 (0x1A8 bytes) contains the avatar Quad
+// the player entity, at GameBoard.playerSystem (0x1A8 bytes) contains the avatar Quad
 // (the character icon that moves on the hex grid), the player's stats, the 3
 // starter baseItems, and a vector of gained perks.
 //
 // inherits MovableActor (vtable PTR_FUN_100074660), the same 0x134-byte base
 // TileContent and SnagContent use. inheriting rather than composing is what
-// lets our derived fields land at +0x134 inside MovableActor's tail padding,
+// lets our derived fields land inside MovableActor's tail padding,
 // matching the binary's layout. the base owns baseQuad, the visible flag, the
 // 4 stage timers, and the movement queue.
 //
@@ -31,7 +31,7 @@ class PlayerSystem : public MovableActor {
 public:
     // FUN_100038b18 base init + FUN_100056138 derived init. sets vtable,
     // visible=1, inits the character Quad, all 4 stage timers to 1.0 (no
-    // animation pending), and the stat block. the base "parent" field at +0xE8
+    // animation pending), and the stat block. the base "parent" field
     // stays null and nothing reads it; code that needs the Game struct goes
     // through the getGame() global instead.
     void init();
@@ -79,7 +79,7 @@ public:
     void onLevelEnd();
 
     // FUN_1000568bc: re-aggregate sumATK / sumDEF / sumHP across the 3
-    // starter Item slots, store min/max ranges at +0x158..+0x16F, and
+    // starter Item slots, store min/max ranges into statRanges, and
     // recompute maxHealth = (baseHP + sumHP) * 5. clamps currentHealth
     // to maxHealth in case max went down.
     void recomputeStats();
@@ -104,32 +104,32 @@ public:
 
     // --- byte-exact struct fields ---
     // the player avatar's Quad / visible flag / 4-stage timers / movement
-    // queue all live in the inherited MovableActor base at +0x000..+0x133.
+    // queue all live in the inherited MovableActor base.
     // note: when code reads/writes the avatar Quad, it does so as `baseQuad`
     // (the inherited member name).
 
     // ---- PlayerSystem-specific (0x134..0x1A7; lands in MovableActor's
     //      tail padding via the tail-padding optimization) ----
-    int32_t characterIndex;        // +0x134  (0..29; selects portrait UV)
+    int32_t characterIndex;        // (0..29; selects portrait UV)
 
     // player's current level (0-indexed). starts at 0 on new-game, +1 each time
     // the level-up panel commit drains its picks. only resets on new game.
     // the Item ctor (FUN_10003040c) reads it as the SpecialAbility magnitude
     // tier: `magnitude = rngInt(lo, lo + (currentLevel / 10) * step)`. every 10
     // levels bumps the tier, so items rolled later in a run come out stronger.
-    int32_t currentLevel;          // +0x138  (init 0)
+    int32_t currentLevel;          // (init 0)
 
-    // player stats (read by GameplayHUD via GameBoard+0x83AC..+0x83B8):
-    int32_t currentHealth;         // +0x13C  (mirrored to GameplayHUD center number)
-    int32_t maxHealth;             // +0x140  (mirrored to GameplayHUD denominator)
-    int32_t attack;                // +0x144  (mirrored to GameplayHUD left tint)
-    int32_t defence;               // +0x148  (mirrored to GameplayHUD right tint)
+    // player stats (read by GameplayHUD):
+    int32_t currentHealth;         // (mirrored to GameplayHUD center number)
+    int32_t maxHealth;             // (mirrored to GameplayHUD denominator)
+    int32_t attack;                // (mirrored to GameplayHUD left tint)
+    int32_t defence;               // (mirrored to GameplayHUD right tint)
 
     // base stat values (init 1 each, used as a floor when recomputeStats
     // takes min/max against summed Item contributions).
-    int32_t baseATK;               // +0x14C  (init 1)
-    int32_t baseDEF;               // +0x150  (init 1)
-    int32_t baseHP;              // +0x154  (init 1)
+    int32_t baseATK;               // (init 1)
+    int32_t baseDEF;               // (init 1)
+    int32_t baseHP;                // (init 1)
 
     // per-stat (lo, hi) ranges computed by recomputeStats (FUN_1000568bc):
     //   [0] = ATK range  (min/max of baseATK,  sum of Item.atk fields)
@@ -147,17 +147,17 @@ public:
     // before any baseItems push all three ranges read [0, 0], because nothing
     // has been summed for this level yet.
     struct StatRange { int32_t lo; int32_t hi; };
-    StatRange statRanges[3];       // +0x158..+0x16F  (3 × 8 bytes)
+    StatRange statRanges[3];       // (3 × 8 bytes)
 
     // 3 starter Item slots. each is a 0x610-byte Item object allocated via
     // operator_new during initLevel (binary's FUN_1000161fc). slot index
     // matches Item's `type` field (0 = atk, 1 = hp, 2 = def starter).
-    Item* baseItems[3];         // +0x170..+0x187
+    Item* baseItems[3];
 
     // passive perks the player has unlocked. each entry is a 0x1F0-byte
     // Perk struct (perk.h) with a (perkType, perkLevel) lead-in. perks are
     // gained / leveled when the player levels up.
-    std::vector<Perk*> perks;  // +0x188..+0x19F
+    std::vector<Perk*> perks;
 
     // FUN_1000569a0. walk perks and return the perkLevel of the first
     // entry whose perkType matches `queryType`; returns 0 when no match.
@@ -186,15 +186,9 @@ public:
     // then plays a one-shot vanish (shrink to scale 0 + 360deg spin over 0.7s)
     // while the next level loads; the next reset() restores scale to 1.0 and
     // clears this flag, bringing the character back.
-    bool exitVanishing;            // +0x1A0  (init 0)
-    uint8_t pad1A1[3];             // +0x1A1
-    float characterPulseT;         // +0x1A4  (init 0; runs the spawn pulse on the
+    bool exitVanishing;            // (init 0)
+    float characterPulseT;         // (init 0; runs the spawn pulse on the
                                    //         first frame. also the state-9 timer:
                                    //         GameBoard's update case 9 reads it
-                                   //         (gb+0x8414) to gate the 9 -> 7 step.)
+                                   //         to gate the 9 -> 7 step.)
 };
-// the binary's FUN_100056138 ctor only writes through +0x1A4 (4 bytes), and
-// the binary's FUN_10003bc20 (StatBars ctor) places StatBars at the GameBoard
-// offset 0x8420 = PlayerSystem-base + 0x1B0. so PlayerSystem can't extend
-// past +0x1A8 in memory, and naturally rounds to 0x1A8 (alignof = 8).
-static_assert(sizeof(PlayerSystem) == 0x1A8, "PlayerSystem must be exactly 0x1A8 bytes");

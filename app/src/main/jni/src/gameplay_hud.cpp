@@ -9,8 +9,46 @@
 
 using namespace GameplayHUDConstants;
 
-// FUN_10000bb60: lay out the 4 health-bar quads (+0xE0, +0x1B8, +0x290, +0x368)
-// based on targetHealthRatio (+0x968) and currentHealthRatio (+0x96c).
+namespace {
+
+// FUN_10000ca90's stat-region table (DAT_100076850, 5 x 0x30). bounds + anchor
+// are screen pixels divided by 640 at use; uvType selects the content-tile
+// icon populateForStatRow draws. {C}/{A}/{D}/{H}/{X} tokens are substituted
+// downstream by TextItem::setString.
+struct StatInspectRegion {
+    int minXpx;
+    int minYpx;
+    int maxXpx;
+    int maxYpx;
+    int anchorXpx;
+    uint32_t uvType;
+    const char* title;
+    const char* desc0;
+    const char* desc1;
+};
+
+constexpr StatInspectRegion kStatRegions[5] = {
+    {  75, 0, 211, 70, 191, 5, "Control",
+       "Collect by placing {C} tiles on {C} spots.",
+       "Every 10 {C} upgrades your items." },
+    { 218, 0, 278, 70, 248, 2, "Current Attack",
+       "Damage done to a snag per attack, less its {D}.",
+       "A third of your {A} is lost when you deal damage." },
+    { 288, 0, 350, 80, 321, 6, "Current Health",
+       "When your {H} reaches 0, Nemesis advances",
+       "quickly and your {H} is refilled to half." },
+    { 362, 0, 422, 70, 392, 3, "Current Defence",
+       "Snag damage is reduced by your {D}.",
+       "Half of your {D} is lost after each attack." },
+    { 429, 0, 565, 70, 449, 4, "Experience",
+       "Collect when Nemesis consumes {X} tiles.",
+       "Every 10 {X} upgrades your stats and perks." },
+};
+
+} // namespace
+
+// FUN_10000bb60: lay out the 4 health-bar quads (healthBarFill, healthBarGain,
+// healthBarOverflow, healthBarTip) based on targetHealthRatio and currentHealthRatio.
 //
 // the bar is 80 source-pixels wide. roles:
 //   healthBarFill     = the visible filled health (col A, height = filled_px)
@@ -51,7 +89,7 @@ static void layoutStatBars(GameplayHUD* h) {
     float emptyPx  = BAR_PX - filledPx;
     float emptyUV  = emptyPx * UV_SCL;
 
-    // --- healthBarFill (+0xE0): the actual filled portion ---
+    // --- healthBarFill: the actual filled portion ---
     // UV column A: 0.5751953..0.6357422. V range = empty/1024 .. 80/1024
     // (the lower portion of the column where the filled color lives).
     h->healthBarFill.quad.setTexCoords(0.5751953f, emptyUV,
@@ -60,7 +98,7 @@ static void layoutStatBars(GameplayHUD* h) {
     h->healthBarFill.quad.posX = 0.5f;
     h->healthBarFill.quad.posY = emptyPx / SIZE_SCL + h->healthBarFill.quad.height * 0.5f;
 
-    // --- healthBarGain (+0x1B8): heal segment, col A (same as fill) ---
+    // --- healthBarGain: heal segment, col A (same as fill) ---
     // V range carves out (80 - filled - gain) .. (80 - filled), the gap
     // between the current fill and the higher target. height = gain_px.
     // when current >= target this collapses to height 0 (invisible).
@@ -72,7 +110,7 @@ static void layoutStatBars(GameplayHUD* h) {
     h->healthBarGain.quad.posY = (h->healthBarFill.quad.posY - h->healthBarFill.quad.height * 0.5f)
                                  - h->healthBarGain.quad.height * 0.5f;
 
-    // --- healthBarOverflow (+0x290): damage segment, col B (different color) ---
+    // --- healthBarOverflow: damage segment, col B (different color) ---
     // UV column B: 0.5136719..0.5742188. V range carves out (80 - overflow - filled)
     // .. (80 - filled), the slice above the target that's about to be lost.
     // when current <= target this collapses to height 0.
@@ -84,7 +122,7 @@ static void layoutStatBars(GameplayHUD* h) {
     h->healthBarOverflow.quad.posY = (h->healthBarFill.quad.posY - h->healthBarFill.quad.height * 0.5f)
                                      - h->healthBarOverflow.quad.height * 0.5f;
 
-    // --- healthBarTip (+0x368): 2-pixel cap on top of filled ---
+    // --- healthBarTip: 2-pixel cap on top of filled ---
     // height = min(filled, 2). when filled > 2 the tip stays at 2px and just
     // tracks the top of the fill bar. when filled <= 2 the tip degenerates to
     // the same height as the fill (and overlaps it harmlessly).
@@ -131,7 +169,6 @@ void GameplayHUD::init(void* parentPtr) {
 
     // post-icon scalar block
     conditionalFlag = false;
-    std::memset(pad959, 0, sizeof(pad959));
     currentHealth = 1;
     maxHealth = 1;
     previousHealthRatio = 0.0f;
@@ -143,8 +180,7 @@ void GameplayHUD::init(void* parentPtr) {
     tintDefence.init();
     tintHealth.init();
 
-    fieldA18 = 1.0f;
-    std::memset(padA1C, 0, sizeof(padA1C));
+    statTintSwapT = 1.0f;
 
     // 10 XP markers (right side) + 10 control markers (left side).
     // bare Quad init each; UVs/sizes/positions set in the layout loop below.
@@ -158,7 +194,6 @@ void GameplayHUD::init(void* parentPtr) {
     xpReceivedTotal     = 0;
     xpAdvanceBusy       = 0;
     xpDrainPhase        = 0;
-    std::memset(pad12EE, 0, sizeof(pad12EE));
 
     for (int i = 0; i < 10; i++) {
         controlMarkers[i].quad = Quad();
@@ -170,10 +205,8 @@ void GameplayHUD::init(void* parentPtr) {
     controlReceivedTotal = 0;
     controlAdvanceBusy   = 0;
     controlDrainPhase    = 0;
-    std::memset(pad1BBE, 0, sizeof(pad1BBE));
     levelUpReady    = 0;
     itemChoiceReady = 0;
-    std::memset(pad1BC2, 0, sizeof(pad1BC2));
 
     // event tray: zero slotPtr + animation state on every entry;
     // progress = 1.0f marks the slot "empty / animation done"
@@ -184,7 +217,6 @@ void GameplayHUD::init(void* parentPtr) {
     }
 
     selectedItem = -1;
-    std::memset(pad1C4C, 0, sizeof(pad1C4C));
     releasedEventSlot = nullptr;
     // removalAnims is default-constructed (libc++ self-points the sentinel
     // and zeroes size on aarch64), matching the binary's explicit
@@ -198,11 +230,10 @@ void GameplayHUD::init(void* parentPtr) {
     overlayState    = 0;
     touchReEntryGuard = 0;  // binary clears both bytes via strh at 0x10000b308
     playSoundNextFill = true;
-    std::memset(pad1E2B, 0, sizeof(pad1E2B));
 
     // --- per-quad UV / size / position setup ---
 
-    // status bar (+0x008): UV (0, 0.7539) -> (0.625, 0.8427), size 1.0 x 0.142.
+    // status bar: UV (0, 0.7539) -> (0.625, 0.8427), size 1.0 x 0.142.
     // posX = width/2 (= 0.5 here); posY = height/2 (= 0.0710938).
     // half-extent comes from width/height, not scaleX/scaleY.
     statusBar.quad.setTexCoords(0.0f, 0.75390625f, 0.625f, 0.84277344f);
@@ -210,21 +241,21 @@ void GameplayHUD::init(void* parentPtr) {
     statusBar.quad.posX = statusBar.quad.width * 0.5f;
     statusBar.quad.posY = statusBar.quad.height * 0.5f;
 
-    // button frame 1 (+0x448): UV (0, 0.194) -> (0.073, 0.260), size 0.117x0.105.
+    // button frame 1: UV (0, 0.194) -> (0.073, 0.260), size 0.117x0.105.
     // posX/posY = width/2, height/2 = (0.0586, 0.0523), top-left corner.
     buttonFrame1.quad.setTexCoords(0.0f, 0.19433594f, 0.07324219f, 0.25976563f);
     buttonFrame1.quad.setSize(0.1171875f, 0.1046875f);
     buttonFrame1.quad.posX = buttonFrame1.quad.width  * 0.5f;
     buttonFrame1.quad.posY = buttonFrame1.quad.height * 0.5f;
 
-    // button frame 2 (+0x520): same UV. posX = width/2 + HUD_BUTTON_X_RIGHT.
+    // button frame 2: same UV. posX = width/2 + HUD_BUTTON_X_RIGHT.
     // posY = height/2. final position (0.943, 0.0523), top-right corner.
     buttonFrame2.quad.setTexCoords(0.0f, 0.19433594f, 0.07324219f, 0.25976563f);
     buttonFrame2.quad.setSize(0.1171875f, 0.1046875f);
     buttonFrame2.quad.posX = buttonFrame2.quad.width  * 0.5f + HUD_BUTTON_X_RIGHT;
     buttonFrame2.quad.posY = buttonFrame2.quad.height * 0.5f;
 
-    // large button frame (+0x5F8): UV (0, 0.265) -> (0.128, 0.342), size 0.205x0.123.
+    // large button frame: UV (0, 0.265) -> (0.128, 0.342), size 0.205x0.123.
     // hardcoded posX/posY = 0.8961, 0.176.
     largeButtonFrame.quad.setTexCoords(0.0f, 0.26464844f, 0.12792969f, 0.34179688f);
     largeButtonFrame.quad.setSize(0.2046875f, 0.1234375f);
@@ -234,10 +265,10 @@ void GameplayHUD::init(void* parentPtr) {
     // FUN_10000bab8: position conditional icon now that largeButtonFrame is in place
     setConditionalIcon(ConditionalIconState::Default);
 
-    // player icon (+0x6D0): UV (0.068, 0.710) -> (0.117, 0.753), size 0.078x0.069.
+    // player icon: UV (0.068, 0.710) -> (0.117, 0.753), size 0.078x0.069.
     // posX = buttonFrame1.posX + HUD_ICON_NUDGE.
     // posY = buttonFrame1.height [read from buttonFrame1.quad.height] (binary
-    //        reads byte offset +0x4F4 which is buttonFrame1.quad.posY).
+    //        reads buttonFrame1.quad.posY).
     playerIcon.quad.setTexCoords(0.068359375f, 0.70996094f, 0.1171875f, 0.7529297f);
     playerIcon.quad.setSize(0.078125f, 0.06875f);
     playerIcon.quad.posX = buttonFrame1.quad.posX + HUD_ICON_NUDGE;
@@ -246,7 +277,7 @@ void GameplayHUD::init(void* parentPtr) {
     // FUN_1000573a8: pixel-snap player icon
     playerIcon.quad.snapToPixelGrid();
 
-    // menu icon (+0x7A8): UV (0.118, 0.712) -> (0.165, 0.753), size 0.075x0.066.
+    // menu icon: UV (0.118, 0.712) -> (0.165, 0.753), size 0.075x0.066.
     // posX = buttonFrame2.posX + HUD_ICON_NUDGE; posY = buttonFrame2.posY + HUD_ICON_NUDGE.
     menuIcon.quad.setTexCoords(0.11816406f, 0.71191406f, 0.16503906f, 0.7529297f);
     menuIcon.quad.setSize(0.075f, 0.065625f);
@@ -293,11 +324,11 @@ void GameplayHUD::init(void* parentPtr) {
     tintHealth.setColor(0xff, 0xff, 0x64);
     tintHealth.setAlpha(0x78);
 
-    // healthBarGain (+0x1B8) gets initial alpha 100 (slightly transparent so it
+    // healthBarGain gets initial alpha 100 (slightly transparent so it
     // visually blends as a heal-in-progress overlay).
     healthBarGain.quad.setAlpha(100);
 
-    // healthBarTip (+0x368) gets a light-gray tint (RGB 200,200,200 alpha 255).
+    // healthBarTip gets a light-gray tint (RGB 200,200,200 alpha 255).
     // the gray multiplier dims the texture sample to ~78% brightness so the tip
     // blends with the bar's edge instead of standing out as a separate slice.
     // (Ghidra shows the 0xFFC8C8C8 store as -NAN; that bit pattern is also a
@@ -307,14 +338,14 @@ void GameplayHUD::init(void* parentPtr) {
     // FUN_10000bb60: lay out the 4 health bars from current/max health
     layoutStatBars(this);
 
-    // overlay quad 1 (+0x1C70): UV (0.206, 0.270) -> (0.372, 0.417), size 0.266x0.234.
+    // overlay quad 1: UV (0.206, 0.270) -> (0.372, 0.417), size 0.266x0.234.
     // posX = 0.5, posY = 0.1875.
     overlayQuad1.quad.setTexCoords(0.20605469f, 0.2705078f, 0.3720703f, 0.4169922f);
     overlayQuad1.quad.setSize(0.265625f, 0.234375f);
     overlayQuad1.quad.posX = 0.5f;
     overlayQuad1.quad.posY = 0.1875f;
 
-    // overlay quad 2 (+0x1D48): same UV/size/pos as overlay 1
+    // overlay quad 2: same UV/size/pos as overlay 1
     overlayQuad2.quad.setTexCoords(0.20605469f, 0.2705078f, 0.3720703f, 0.4169922f);
     overlayQuad2.quad.setSize(0.265625f, 0.234375f);
     overlayQuad2.quad.posX = 0.5f;
@@ -345,28 +376,28 @@ void GameplayHUD::draw() {
 
     // -- pass 3: 9 fixed quads on tex 9, in the binary's exact order --
     bindTexture(9);
-    statusBar.quad.draw();              // +0x008
-    healthBarGain.quad.draw();          // +0x1B8 (drawn behind fill)
-    healthBarOverflow.quad.draw();      // +0x290 (drawn behind fill)
-    healthBarFill.quad.draw();          // +0x0E0 (covers gain/overflow base)
-    healthBarTip.quad.draw();           // +0x368 (2px cap on top)
-    buttonFrame1.quad.draw();           // +0x448
-    playerIcon.quad.draw();             // +0x6D0
-    buttonFrame2.quad.draw();           // +0x520
-    menuIcon.quad.draw();               // +0x7A8
+    statusBar.quad.draw();
+    healthBarGain.quad.draw();          // (drawn behind fill)
+    healthBarOverflow.quad.draw();      // (drawn behind fill)
+    healthBarFill.quad.draw();          // (covers gain/overflow base)
+    healthBarTip.quad.draw();           // (2px cap on top)
+    buttonFrame1.quad.draw();
+    playerIcon.quad.draw();
+    buttonFrame2.quad.draw();
+    menuIcon.quad.draw();
 
-    // conditional pair (gated by conditionalFlag at +0x958)
+    // conditional pair (gated by conditionalFlag)
     if (conditionalFlag) {
-        largeButtonFrame.quad.draw();   // +0x5F8
-        conditionalIcon.quad.draw();    // +0x880
+        largeButtonFrame.quad.draw();
+        conditionalIcon.quad.draw();
     }
 
-    // -- pass 4: control markers (count from +0x1BB0) --
+    // -- pass 4: control markers (count from controlCount) --
     for (int i = 0; i < controlCount; i++) {
         controlMarkers[i].quad.draw();
     }
 
-    // -- pass 5: xp markers (count from +0x12E0) --
+    // -- pass 5: xp markers (count from xpCount) --
     for (int i = 0; i < xpCount; i++) {
         xpMarkers[i].quad.draw();
     }
@@ -380,8 +411,8 @@ void GameplayHUD::draw() {
     // -- pass 7: overlay quads (only when overlayProgress > 0; tex 8) --
     if (overlayProgress > 0.0f) {
         bindTexture(8);
-        overlayQuad2.quad.draw();    // +0x1D48 drawn first
-        overlayQuad1.quad.draw();    // +0x1C70 drawn second
+        overlayQuad2.quad.draw();    // drawn first
+        overlayQuad1.quad.draw();    // drawn second
     }
 }
 
@@ -401,19 +432,19 @@ void tickMarkerBank(float dt, MarkerSlot* slots,
 void GameplayHUD::update(float dt) {
     // per-frame tick for both marker banks (xp + control). chime sounds
     // 0x1A and 0x1B match FUN_10000c568's dispatch, which selects the chime
-    // by comparing the bank base against +0x12f0 (controlMarkers):
+    // by comparing the bank base against controlMarkers:
     // bank == controlMarkers -> 0x1A, else -> 0x1B.
     tickMarkerBank(dt, xpMarkers,
                    xpCount, xpQueuedDelta, xpReceivedTotal,
                    xpAdvanceBusy, xpDrainPhase,
                    playSoundNextFill,
-                   &levelUpReady,   // HUD+0x1BC0, XP bank full -> level up
+                   &levelUpReady,   // XP bank full -> level up
                    0x1B);
     tickMarkerBank(dt, controlMarkers,
                    controlCount, controlQueuedDelta, controlReceivedTotal,
                    controlAdvanceBusy, controlDrainPhase,
                    playSoundNextFill,
-                   &itemChoiceReady,   // HUD+0x1BC1, CTRL bank full -> item choice
+                   &itemChoiceReady,   // CTRL bank full -> item choice
                    0x1A);
 
     // death-heart pulse: the broken beating heart overlay drawn while
@@ -451,19 +482,19 @@ void GameplayHUD::update(float dt) {
         layoutStatBars(this);
     }
 
-    // -- tint slide animation when fieldA18 < 1 (level-transition swap) --
-    if (fieldA18 < 1.0f) {
+    // -- tint slide animation when statTintSwapT < 1 (level-transition swap) --
+    if (statTintSwapT < 1.0f) {
         constexpr float PI = 3.1415927f;
         constexpr float Y_BOUNCE   = 0.03125f;     // DAT_100059ccc
         constexpr float TINT_X_R   = 0.6125f;      // DAT_100059cd0 (right resting)
         constexpr float TINT_Y     = 0.046875f;    // DAT_100059cd4 (resting Y)
         constexpr float TINT_X_L   = 0.38593751f;  // DAT_100059cd8 (left resting)
 
-        float t = fieldA18 + dt + dt;  // advance by 2*dt
+        float t = statTintSwapT + dt + dt;  // advance by 2*dt
         if (t > 1.0f) {
             t = 1.0f;
         }
-        fieldA18 = t;
+        statTintSwapT = t;
 
         // tintAttack slide: starts on the right, ends on the left (resting ATK position)
         float bounce = (0.5f - std::cos((t + t) * PI) * 0.5f) * Y_BOUNCE;
@@ -476,10 +507,10 @@ void GameplayHUD::update(float dt) {
         tintAttack.setPosition(atkX, atkY, mode);
 
         // tintDefence slide: starts on the left, ends on the right (resting DEF position)
-        float xMix2 = 0.5f - std::cos(fieldA18 * PI) * 0.5f;
+        float xMix2 = 0.5f - std::cos(statTintSwapT * PI) * 0.5f;
         float defX = xMix2 * TINT_X_R + (1.0f - xMix2) * TINT_X_L;
         float defY = (xMix2 * TINT_Y + (1.0f - xMix2) * TINT_Y) - bounce;
-        int mode2 = (fieldA18 >= 1.0f) ? 1 : 0;
+        int mode2 = (statTintSwapT >= 1.0f) ? 1 : 0;
         tintDefence.setPosition(defX, defY, mode2);
     }
 
@@ -612,44 +643,6 @@ void GameplayHUD::update(float dt) {
     }
 }
 
-namespace {
-
-// FUN_10000ca90's stat-region table (DAT_100076850, 5 x 0x30). bounds + anchor
-// are screen pixels divided by 640 at use; uvType selects the content-tile
-// icon populateForStatRow draws. {C}/{A}/{D}/{H}/{X} tokens are substituted
-// downstream by TextItem::setString.
-struct StatInspectRegion {
-    int minXpx;
-    int minYpx;
-    int maxXpx;
-    int maxYpx;
-    int anchorXpx;
-    uint32_t uvType;
-    const char* title;
-    const char* desc0;
-    const char* desc1;
-};
-
-constexpr StatInspectRegion kStatRegions[5] = {
-    {  75, 0, 211, 70, 191, 5, "Control",
-       "Collect by placing {C} tiles on {C} spots.",
-       "Every 10 {C} upgrades your items." },
-    { 218, 0, 278, 70, 248, 2, "Current Attack",
-       "Damage done to a snag per attack, less its {D}.",
-       "A third of your {A} is lost when you deal damage." },
-    { 288, 0, 350, 80, 321, 6, "Current Health",
-       "When your {H} reaches 0, Nemesis advances",
-       "quickly and your {H} is refilled to half." },
-    { 362, 0, 422, 70, 392, 3, "Current Defence",
-       "Snag damage is reduced by your {D}.",
-       "Half of your {D} is lost after each attack." },
-    { 429, 0, 565, 70, 449, 4, "Experience",
-       "Collect when Nemesis consumes {X} tiles.",
-       "Every 10 {X} upgrades your stats and perks." },
-};
-
-} // namespace
-
 // reconstructed from Ghidra FUN_10000ca90.
 bool GameplayHUD::tryInspectStatRegion(int index) {
     Game* g = getGame();
@@ -674,7 +667,7 @@ bool GameplayHUD::tryInspectStatRegion(int index) {
 
 // reconstructed from Ghidra FUN_10000d0dc
 void GameplayHUD::setAttack(int value) {
-    // tintAttack (+0x970): show ATK value as digits, then position at the
+    // tintAttack: show ATK value as digits, then position at the
     // resting spot in the top-left.
     tintAttack.setNumber(value, 1, 1);  // textStyle 1 (large digits), positionMode 1
     tintAttack.setPosition(0.38593751f, 0.046875f, 1);
@@ -723,8 +716,8 @@ void GameplayHUD::setMaxHealth(int value) {
 
 // reconstructed from Ghidra FUN_10000d9ac
 void GameplayHUD::resetOverlay(int hardClear) {
-    // only the overlayState byte (+0x1E28) is cleared; the adjacent +0x1E29
-    // byte (touchReEntryGuard) is a separate field, not touched here.
+    // only the overlayState byte is cleared; the adjacent touchReEntryGuard
+    // byte is a separate field, not touched here.
     overlayState = 0;
 
     if (hardClear != 0) {
@@ -945,8 +938,8 @@ void advanceMarkerBank(int delta,
 // queued deltas or transitions into drainPhase when the bank
 // overflowed (count == 10 + queued > 0).
 //
-// `drainSignalOut` is a single-byte output stored at HUD+0x1BC0 / +0x1BC1
-// (xp / control respectively); it gets set to 1 when the bank just entered
+// `drainSignalOut` is a single-byte output (xp / control respectively);
+// it gets set to 1 when the bank just entered
 // drainPhase. the xp byte is levelUpReady, the control byte is
 // itemChoiceReady; gameBoardUpdate consumes both to open the LevelUp /
 // ItemChoice panels, then clears them.
@@ -1112,9 +1105,9 @@ void GameplayHUD::restoreFromSnapshot(int playerAttack, int playerDefence,
     // ---- touch / engagement + marker-bank-full state reset ----
     engagementState   = 0;
     publishedState    = 0;
-    fieldA18          = 1.0f;         // set by the binary; no reader in ported scope
-    levelUpReady      = 0;            // +0x1BC0
-    itemChoiceReady   = 0;            // +0x1BC1
+    statTintSwapT     = 1.0f;
+    levelUpReady      = 0;
+    itemChoiceReady   = 0;
     selectedItem      = -1;
     releasedEventSlot = nullptr;
     touchReEntryGuard = 0;
@@ -1146,8 +1139,8 @@ void GameplayHUD::restoreFromSnapshot(int playerAttack, int playerDefence,
     }
 
     // ---- zero both marker banks (count / queued / total / busy). the
-    //      binary's overlapping 8-byte writes cover +0x1BB0..+0x1BBC and
-    //      +0x12E0..+0x12EC, so controlDrainPhase / xpDrainPhase are
+    //      binary's overlapping 8-byte writes cover the control bank and
+    //      the xp bank, so controlDrainPhase / xpDrainPhase are
     //      deliberately left untouched. ----
     controlCount         = 0;
     controlQueuedDelta   = 0;
@@ -1204,7 +1197,7 @@ void GameplayHUD::drainXPSlot(int delta, bool silentDrain) {
 
 // reconstructed from Ghidra FUN_10000d3a0. visual ATK/DEF swap. pushes the
 // new values into each tint at its resting target position, then swaps
-// their CURRENT positions so the slide animation kicked by fieldA18 = 0
+// their CURRENT positions so the slide animation kicked by statTintSwapT = 0
 // runs back from the opposite side. textStyle 1 = panel font (HUD numbers),
 // position mode 1 = pixel-snap relative to anchor.
 void GameplayHUD::swapAtkDefDisplays(int newAtkValue, int newDefValue) {
@@ -1232,7 +1225,7 @@ void GameplayHUD::swapAtkDefDisplays(int newAtkValue, int newDefValue) {
     tintDefence.setPosition(savedAtkX, savedAtkY, 1);
 
     // step 3: kick the slide animation timer (consumed in update()).
-    fieldA18 = 0.0f;
+    statTintSwapT = 0.0f;
 }
 
 // FUN_10000d778, drop every event tray slot via repeated remove-slot-0
@@ -1274,8 +1267,7 @@ void GameplayHUD::setConditionalIcon(ConditionalIconState state) {
     conditionalIcon.quad.setTexCoords(u0, v0, u1, v1);
     conditionalIcon.quad.setSize(w, h);
 
-    // anchor to largeButtonFrame's pos (largeButtonFrame is at HUD+0x05F8;
-    // its Quad's posX/posY are at +0x6A0/+0x6A4 = the binary's read sites).
+    // anchor to largeButtonFrame's pos (binary reads its Quad's posX/posY).
     conditionalIcon.quad.posX = largeButtonFrame.quad.posX;
     conditionalIcon.quad.posY = largeButtonFrame.quad.posY + HUD_COND_Y_NUDGE;
 
@@ -1334,8 +1326,8 @@ bool GameplayHUD::anyEventSlotSlidingIn() const {
 }
 
 // reconstructed from Ghidra FUN_10000dcc8. paired-float return: s0 = first
-// non-empty slot's mainQuad.posX (+0xb8), s1 = posY (+0xbc). Ghidra drops s1;
-// recovered from disassembly (fmov s0,[+0xb8]; ldr s1,[+0xbc]).
+// non-empty slot's mainQuad.posX, s1 = posY. Ghidra drops s1;
+// recovered from disassembly (fmov s0 = posX, ldr s1 = posY).
 void GameplayHUD::firstEventSlotPos(float& outX, float& outY) const {
 
     for (int i = 0; i < 4; ++i) {
@@ -1435,8 +1427,8 @@ void GameplayHUD::addEventSlot(EventSlot* slot) {
             const float startXY[2] = { eventTray[i].currentX, eventTray[i].currentY };
             slot->setPosition(startXY);
             slot->setAlpha(0xFF);
-            // binary's str xzr at install clears both progress (+0x18) and
-            // shiftDelay (+0x1C); a stale shiftDelay left by a prior compaction
+            // binary's str xzr at install clears both progress and
+            // shiftDelay; a stale shiftDelay left by a prior compaction
             // would otherwise delay this reused slot's slide-in.
             eventTray[i].progress   = 0.0f;
             eventTray[i].shiftDelay = 0.0f;
@@ -1548,7 +1540,7 @@ void GameplayHUD::clearCTRLBank() {
 }
 
 // reconstructed from Ghidra FUN_10000d0b4. zero the xp-marker bank.
-// parallel to clearCTRLBank, same field shape at +0x12E0..+0x12EC.
+// parallel to clearCTRLBank, same field shape.
 void GameplayHUD::clearXPBank() {
     xpCount         = 0;
     xpQueuedDelta   = 0;
@@ -1559,7 +1551,7 @@ void GameplayHUD::clearXPBank() {
 // FUN_10000cb84, touch-release / engagement state machine.
 //
 // a single function called every frame from the input dispatch chain.
-// behavior depends on getGame()->inputState() (Game+0x4): 1 = first frame
+// behavior depends on getGame()->inputState() (Game.inputState_): 1 = first frame
 // after touch-down, 2 = ongoing touch held, anything else = released.
 // inputState 1-or-2 takes the "engagement" branch (capture which header
 // the touch landed on); any other state takes the "release" branch
@@ -1577,7 +1569,7 @@ int GameplayHUD::queryReleaseTouch() {
         return 0;
     }
 
-    // binary checks Game+0x4 (= inputState), not Game+0x0 (gameState).
+    // binary checks Game.inputState_ (= inputState), not Game.gameState_ (gameState).
     // inputState 1 = "first frame of a new touch"; inputState 2 = "ongoing
     // touch held"; both go to the engagement branch. any other value
     // (released, etc.) falls through to the release branch below.
@@ -1595,7 +1587,7 @@ int GameplayHUD::queryReleaseTouch() {
         }
 
         // header-zone gate: header hit-tests only fire when touchY is in
-        // the top of the screen. binary reads Game+0xC (= touchY in our
+        // the top of the screen. binary reads Game.touchY_ (= touchY in our
         // typed Game) and compares to DAT_100059d30 = 0x3df00000 (= 75/640).
         // taps below that virtual-Y fall through to the largeButtonFrame +
         // EventSlot tests.
@@ -1606,25 +1598,25 @@ int GameplayHUD::queryReleaseTouch() {
         if (touchYNorm < HEADER_ZONE_BOTTOM) {
             // header hit-tests (priority order):
             //
-            // 1. buttonFrame1 (+0x448) paired with playerIcon (+0x6D0).
+            // 1. buttonFrame1 paired with playerIcon.
             if (buttonFrame1.quad.contains(touchXY[0], touchXY[1])) {
                 engagementState = 1;
                 quadSetColorBytes(&buttonFrame1.quad, 0xFFB4B4B4u);
                 quadSetColorBytes(&playerIcon.quad,   0xFFB4B4B4u);
                 g->soundQueue.trigger(5);
                 SDL_Log("DEBUG queryReleaseTouch: engagement state=1 "
-                        "(buttonFrame1 @ +0x448, paired playerIcon)");
+                        "(buttonFrame1, paired playerIcon)");
                 return 1;
             }
 
-            // 2. buttonFrame2 (+0x520) paired with menuIcon (+0x7A8).
+            // 2. buttonFrame2 paired with menuIcon.
             if (buttonFrame2.quad.contains(touchXY[0], touchXY[1])) {
                 engagementState = 2;
                 quadSetColorBytes(&buttonFrame2.quad, 0xFFB4B4B4u);
                 quadSetColorBytes(&menuIcon.quad,     0xFFB4B4B4u);
                 g->soundQueue.trigger(5);
                 SDL_Log("DEBUG queryReleaseTouch: engagement state=2 "
-                        "(buttonFrame2 @ +0x520, paired menuIcon)");
+                        "(buttonFrame2, paired menuIcon)");
                 return 1;
             }
 
@@ -1633,7 +1625,7 @@ int GameplayHUD::queryReleaseTouch() {
             return 1;
         }
 
-        // 3. largeButtonFrame (+0x5F8), gated by conditionalFlag.
+        // 3. largeButtonFrame, gated by conditionalFlag.
         if (conditionalFlag) {
             if (largeButtonFrame.quad.contains(touchXY[0], touchXY[1])) {
                 engagementState = 3;
@@ -1641,7 +1633,7 @@ int GameplayHUD::queryReleaseTouch() {
                 quadSetColorBytes(&conditionalIcon.quad,  0xFFB4B4B4u);
                 g->soundQueue.trigger(5);
                 SDL_Log("DEBUG queryReleaseTouch: engagement state=3 "
-                        "(largeButtonFrame @ +0x5F8, paired conditionalIcon)");
+                        "(largeButtonFrame, paired conditionalIcon)");
                 return 1;
             }
         }

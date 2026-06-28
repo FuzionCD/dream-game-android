@@ -22,8 +22,6 @@
 #include <list>                 // std::list, commitCleanupQuadBatch involved-tiles list
 #include <new>
 
-
-
 namespace {
 
 // FUN_100012f04(col, row, mode=1): pixel-snapped hex cell X position with
@@ -60,7 +58,6 @@ namespace {
 
         return { snap(rawX) + HEX_X_OUT_OFFS, snap(rawY) + HEX_Y_OUT_OFFS };
     }
-
 
 // -----------------------------------------------------------------------------
 // hex-grid placement rules engine (FUN_100013060 / FUN_100013084 / FUN_10001325c
@@ -459,8 +456,6 @@ void buildDirList(GameBoard* board, TileObject* pickedTile,
 
 }  // anonymous namespace
 
-
-
 // reconstructed from FUN_100014ed8
 GameBoard* GameBoard::create() {
     // the original uses operator_new, so we use new (constructors do run here)
@@ -579,9 +574,9 @@ GameBoard* GameBoard::create() {
     pBoard->dialogPanel.init();
 
     // gameplay HUD init (FUN_10000b160 in FUN_100014ed8). the binary passes
-    // the DetailPanel ptr (GameBoard+0x4408) as the parent. the HUD only
+    // the DetailPanel ptr (GameBoard.detailPanel) as the parent. the HUD only
     // stores it for read-back; doesn't dereference until Phase C.
-    pBoard->hud.init(((uint8_t*)pBoard) + 0x4408);
+    pBoard->hud.init(&pBoard->detailPanel);
 
     // PlayerSystem init (FUN_100056138, called from FUN_100014ed8). the
     // binary passes a pointer-to-zero, so the parent field ends up null and
@@ -614,7 +609,7 @@ GameBoard* GameBoard::create() {
     // pending unlock from the GameBoard::update prologue.
     pBoard->achievementBanner.init();
 
-    // --- build the rack-render-order list at +0x180 ---
+    // --- build the rack-render-order list ---
     // the original pushes 5 entries with slot indices 0..4. each
     // GameBoard::draw walks this list and dereferences `rack[slot]` to
     // draw rack tiles in their layered order.
@@ -622,7 +617,7 @@ GameBoard* GameBoard::create() {
         pBoard->rackOrder.push_back(i);
     }
 
-    // tileWeightPool at +0x9688: zero-init (FUN_10004cfe0) followed by 5
+    // tileWeightPool: zero-init (FUN_10004cfe0) followed by 5
     // push calls (FUN_10004cfec at 100015460..1000154ac in the binary's ctor).
     // typeIds + initial weights:
     //   2 (DEF) = 30   3 (ATK) = 30   6 (HP) = 10   5 (CTRL) = 15   1 (snag) = 15
@@ -659,7 +654,6 @@ GameBoard* GameBoard::create() {
         dbgEvent4->init(/*eventType=*/(int)EventKind::IdyllicLandscape, /*magnitudeBase=*/0);   // HardenedShell (Defence, chargesMax=5)
         pBoard->hud.addEventSlot(dbgEvent4);
 
-
     }
 #endif
 
@@ -686,7 +680,7 @@ void GameBoard::destroy() {
         }
     }
 
-    // 2. page list at +0x1A8: each entry is a TileObject* owned by us.
+    // 2. page list: each entry is a TileObject* owned by us.
     // delete each held tile; the std::list's nodes are freed by its own
     // dtor when GameBoard is destroyed.
     for (TileObject* tile : pageList) {
@@ -698,7 +692,7 @@ void GameBoard::destroy() {
 
     pageList.clear();
 
-    // 3. discard-slide list at +0x96A0: tiles in flight when destroy()
+    // 3. discard-slide list: tiles in flight when destroy()
     // runs are still held by these entries; delete each before clearing.
     for (DiscardSlideBody& entry : discardSlide) {
 
@@ -709,17 +703,17 @@ void GameBoard::destroy() {
 
     discardSlide.clear();
 
-    // 3a. stat-change tween queue at +0x9650: each entry owns a ColorTint
+    // 3a. stat-change tween queue: each entry owns a ColorTint
     // by value (auto-freed by TweenBody's implicit dtor cascade when clear
     // pops them). matches FUN_100029704 in the binary's GameBoard dtor.
     statTween.clear();
     statTweenAnyAnim = false;
 
-    // 3b. action queue at +0x9670: each entry owns a std::vector<TileIcon>
+    // 3b. action queue: each entry owns a std::vector<TileIcon>
     // (auto-freed by ActionBody's implicit dtor). matches FUN_100029774.
     actionQueue.clear();
 
-    // 4. tile reserve queue at +0x96D8: each entry owns a TileObject*.
+    // 4. tile reserve queue: each entry owns a TileObject*.
     // matches FUN_10002899c plus the earlier inner walk that deletes each
     // held tile.
     for (TileReserveEntry& entry : tileReserve) {
@@ -731,7 +725,7 @@ void GameBoard::destroy() {
 
     tileReserve.clear();
 
-    // 5. rack-order list at +0x180 (FUN_100008894): entries are just slot
+    // 5. rack-order list (FUN_100008894): entries are just slot
     // indices, no owned pointers. clear pops them all.
     rackOrder.clear();
 
@@ -741,8 +735,6 @@ void GameBoard::destroy() {
 }
 
 // reconstructed from FUN_1000184e4, idle-state reset.
-//   FUN_10003a408(this + 0x9d48);   // animController.reset()
-//   *(int*)(this + 0x18) = 1;        // state = 1
 void GameBoard::handleIdle() {
     animController.reset();
     state = 1;
@@ -796,8 +788,8 @@ void GameBoard::draw() {
 
     bindTexture(9);
 
-    // 8.2 dynamic gameplay items vector (binary's +0x96B8 vector + +0x96D0
-    //     live count). before any items spawn, liveCount = 0 so the loop is empty.
+    // 8.2 dynamic gameplay items vector (the gameplayItems vector +
+    //     gameplayItemsLiveCount). before any items spawn, liveCount = 0 so the loop is empty.
     if (gameplayItemsLiveCount > 0 && !gameplayItems.empty()) {
 
         for (int64_t i = 0; i < gameplayItemsLiveCount &&
@@ -957,8 +949,8 @@ void GameBoard::draw() {
     }
 
     // 8.10 exit-arrow visualization. binary gates the draw on
-    //      `*(float *)(+0x9C64) > 0`: the per-frame fade timer (separate
-    //      from the visible byte at +0x9C60, which updateExitArrowVisualState
+    //      `exitArrowFade > 0`: the per-frame fade timer (separate
+    //      from the visible byte exitArrowVisible, which updateExitArrowVisualState
     //      sets but does not ramp). tickExitArrowFade ramps exitArrowFade each
     //      frame, so the arrow fades in after pickup.
     if (exitArrowFade > 0.0f) {
@@ -967,7 +959,7 @@ void GameBoard::draw() {
         exitArrowDigit.draw();
     }
 
-    // 8.11 stat bars row (StatBars at +0x8420). when idle: visible = 0.
+    // 8.11 stat bars row (StatBars). when idle: visible = 0.
     statBars.draw();
 
     // 8.12 character token. binary skips this when nemesis already drew
@@ -1018,7 +1010,7 @@ void GameBoard::draw() {
     bindTexture(9);
     titleQuad.draw();
 
-    // 8.17 discard-slide list at +0x96A0: TileObjects mid-discard, drawn
+    // 8.17 discard-slide list: TileObjects mid-discard, drawn
     //      on top of the rack so they slide cleanly over it. each tile sits
     //      in this list for ~0.3s while its slide timer animates from 0 to
     //      1, then gets deleted. when idle: empty list.
@@ -1030,7 +1022,7 @@ void GameBoard::draw() {
         }
     }
 
-    // 8.18 rack-order list at +0x180: walks the slot indices in stacking
+    // 8.18 rack-order list: walks the slot indices in stacking
     //      order, drawing rack[slot] for each slot that's not the selected
     //      one (selectedRackSlot already drew above on top).
     for (int slot : rackOrder) {
@@ -1060,10 +1052,9 @@ void GameBoard::draw() {
         }
     }
 
-    // 8.21 sub-collections at +0x9650 (stat-change tweens) and +0x9670
-    //      (action queue). both walks early-out when idle (empty
-    //      lists / anyAnimating=false). caller (us) has tex 9 bound
-    //      already from bindTexture(9) above.
+    // 8.21 sub-collections statTween and actionQueue. both walks early-out
+    //      when idle (empty lists / anyAnimating=false). caller (us) has
+    //      tex 9 bound already from bindTexture(9) above.
     drawStatTween();           // FUN_10002be84
     drawActionQueue();         // FUN_100038440
 
@@ -1073,14 +1064,14 @@ void GameBoard::draw() {
     //   -> detailPanel -> dialogPanel -> achievementBanner.
     // each panel has a visible-flag early-out so an idle board naturally
     // skips them. achievementBanner draws last so it overlays everything.
-    pauseMenu.draw();             // FUN_10002f0cc (GameBoard+0xF488)
-    userStatsPanel.draw();        // FUN_10000a3dc (GameBoard+0xA3F8)
-    eventChoicePanel.draw();      // FUN_10000e6d4 (GameBoard+0xB2A8)
-    levelUpPanel.draw();          // FUN_10002cd20 (GameBoard+0xC7B8)
-    itemChoicePanel.draw();       // FUN_1000349ac (GameBoard+0xDEF0)
-    detailPanel.draw();           // FUN_10003ef28 (GameBoard+0x4408)
-    dialogPanel.draw();           // FUN_100040e9c (GameBoard+0x54B8)
-    achievementBanner.draw();     // FUN_10004f3b8 (GameBoard+0x9E18)
+    pauseMenu.draw();             // FUN_10002f0cc (GameBoard.pauseMenu)
+    userStatsPanel.draw();        // FUN_10000a3dc (GameBoard.userStatsPanel)
+    eventChoicePanel.draw();      // FUN_10000e6d4 (GameBoard.eventChoicePanel)
+    levelUpPanel.draw();          // FUN_10002cd20 (GameBoard.levelUpPanel)
+    itemChoicePanel.draw();       // FUN_1000349ac (GameBoard.itemChoicePanel)
+    detailPanel.draw();           // FUN_10003ef28 (GameBoard.detailPanel)
+    dialogPanel.draw();           // FUN_100040e9c (GameBoard.dialogPanel)
+    achievementBanner.draw();     // FUN_10004f3b8 (GameBoard.achievementBanner)
 }
 
 // =============================================================================
@@ -1120,8 +1111,8 @@ void GameBoard::showNextAchievementBanner() {
 // tutorialFlag != 0:
 //   1. tick the active popup (DialogPanel::update); while it's still visible,
 //      return (it modally owns the frame).
-//   2. return if the popup hasn't finished its previous fade (fadeProgress,
-//      gb+0x63E0, < 1.0); don't stack a new hint on an in-flight one.
+//   2. return if the popup hasn't finished its previous fade (fadeProgress
+//      < 1.0); don't stack a new hint on an in-flight one.
 //   3. walk the 24-branch priority cascade: the first hint whose `hintShown`
 //      flag is clear and whose live board condition holds wins; it computes
 //      the anchor, marks itself shown + anyHintFiredThisFrame + dirty, and
@@ -1147,7 +1138,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    if (dialogPanel.fadeProgress < 1.0f) {   // gb+0x63E0
+    if (dialogPanel.fadeProgress < 1.0f) {
         return;
     }
 
@@ -1180,7 +1171,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return t->slideTimer >= 1.0f && t->rotationLerpT >= 1.0f;
     };
 
-    // 0x00: player avatar (fires immediately, once).
+    // player avatar (fires immediately, once).
     if (dialogPanel.hintShown[0x00] == 0) {
         fireHint(0x00, VGAP_BOARD,
                  playerSystem.baseQuad.posX + positionX,
@@ -1188,7 +1179,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x01: starting rack tiles (slots 0 and 2) settled into place.
+    // starting rack tiles (slots 0 and 2) settled into place.
     if (dialogPanel.hintShown[0x01] == 0 &&
         rack[2] != nullptr && settled(rack[2]) &&
         rack[0] != nullptr && settled(rack[0])) {
@@ -1196,7 +1187,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x02: a picked-up tile settled into the placement preview.
+    // a picked-up tile settled into the placement preview.
     if (dialogPanel.hintShown[0x02] == 0 &&
         selectedRackSlot != -1 && settled(rack[selectedRackSlot])) {
         fireHint(0x02, VGAP_BOARD,
@@ -1205,7 +1196,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x16: dead end: the X-button is showing and the board is idle.
+    // dead end: the X-button is showing and the board is idle.
     if (dialogPanel.hintShown[0x16] == 0 && xButtonVisible && state == 1) {
         fireHint(0x16, VGAP_PANEL,
                  xButtonQuad.quad.posX + positionX,
@@ -1213,7 +1204,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x03 / 0x04 / 0x05: the picked-up tile carries ATK(2) / DEF(3) / HP(6).
+    // hint 3/4/5: the picked-up tile carries ATK(2) / DEF(3) / HP(6).
     if (dialogPanel.hintShown[0x03] == 0 && dialogPanel.anyHintFiredThisFrame == 0 &&
         selectedRackSlot != -1 && settled(rack[selectedRackSlot]) &&
         rack[selectedRackSlot]->getContentType() == 2) {
@@ -1241,7 +1232,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x06: the actively-dragged tile carries Control(5).
+    // the actively-dragged tile carries Control(5).
     if (dialogPanel.hintShown[0x06] == 0 &&
         draggedRackSlot != -1 &&
         rack[draggedRackSlot]->getContentType() == 5) {
@@ -1251,7 +1242,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x07: a settled XP(4) tile sits on the placed trail.
+    // a settled XP(4) tile sits on the placed trail.
     if (dialogPanel.hintShown[0x07] == 0) {
         for (TileObject* tile : pageList) {
             if (tile->getContentType() == 4 && !tile->isContentScaleAnimating()) {
@@ -1263,7 +1254,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         }
     }
 
-    // 0x08: the exit-direction arrow has faded in.
+    // the exit-direction arrow has faded in.
     if (dialogPanel.hintShown[0x08] == 0 && dialogPanel.anyHintFiredThisFrame == 0 &&
         exitArrowVisible && exitArrowFade >= 1.0f) {
         fireHint(0x08, VGAP_PANEL,
@@ -1272,7 +1263,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x09: a snag tile is settled in the rack.
+    // a snag tile is settled in the rack.
     if (dialogPanel.hintShown[0x09] == 0) {
         for (int i = 0; i < RACK_SLOT_COUNT; ++i) {
             TileObject* t = rack[i];
@@ -1283,7 +1274,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         }
     }
 
-    // 0x0a: a special snag (type != 1) is settled in the rack.
+    // a special snag (type != 1) is settled in the rack.
     if (dialogPanel.hintShown[0x0a] == 0) {
         for (int i = 0; i < RACK_SLOT_COUNT; ++i) {
             TileObject* t = rack[i];
@@ -1295,7 +1286,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         }
     }
 
-    // 0x0b: the snag-inspect DetailPanel (mode 0) is up and settled.
+    // the snag-inspect DetailPanel (mode 0) is up and settled.
     if (dialogPanel.hintShown[0x0b] == 0 &&
         detailPanel.visible && detailPanel.mode == 0 && detailPanel.fadeT >= 1.0f) {
         fireHint(0x0b, VGAP_PANEL,
@@ -1304,7 +1295,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x0c: a tile is staged for discard (anchor: the discard button).
+    // a tile is staged for discard (anchor: the discard button).
     if (dialogPanel.hintShown[0x0c] == 0 &&
         !hud.pendingDiscards.empty() && hud.selectedEvent == nullptr) {
         fireHint(0x0c, VGAP_PANEL,
@@ -1312,7 +1303,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x0d: one of the discard-staged tiles holds a live snag.
+    // one of the discard-staged tiles holds a live snag.
     if (dialogPanel.hintShown[0x0d] == 0 &&
         !hud.pendingDiscards.empty() && hud.selectedEvent == nullptr) {
         for (const DiscardEntry& entry : hud.pendingDiscards) {
@@ -1325,14 +1316,14 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         }
     }
 
-    // 0x0e: Nemesis is visible and the camera pan has settled.
+    // Nemesis is visible and the camera pan has settled.
     if (dialogPanel.hintShown[0x0e] == 0 && nemesis.visible && panProgress >= 1.0f) {
         HexCellPos np = hexCellLinearXY(nemesis.nemesisGridCol, nemesis.nemesisGridRow);
         fireHint(0x0e, VGAP_BOARD, np.x + positionX, np.y + positionY);
         return;
     }
 
-    // 0x0f: the stats panel is open (anchor: the stats button).
+    // the stats panel is open (anchor: the stats button).
     if (dialogPanel.hintShown[0x0f] == 0 &&
         userStatsPanel.visible && userStatsPanel.fadeTimer >= 1.0f) {
         fireHint(0x0f, VGAP_PANEL,
@@ -1340,7 +1331,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x10: the pause / settings menu is open (anchor: the menu button).
+    // the pause / settings menu is open (anchor: the menu button).
     if (dialogPanel.hintShown[0x10] == 0 &&
         pauseMenu.visible && pauseMenu.animTimer0 >= 1.0f) {
         fireHint(0x10, VGAP_PANEL,
@@ -1348,7 +1339,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x11: the level-up panel is open.
+    // the level-up panel is open.
     if (dialogPanel.hintShown[0x11] == 0 &&
         levelUpPanel.visible && levelUpPanel.animTimer0 >= 1.0f) {
         fireHint(0x11, VGAP_PANEL,
@@ -1357,7 +1348,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x12: the item-choice panel is open.
+    // the item-choice panel is open.
     if (dialogPanel.hintShown[0x12] == 0 &&
         itemChoicePanel.visible && itemChoicePanel.animTimer0 >= 1.0f) {
         fireHint(0x12, VGAP_PANEL,
@@ -1366,7 +1357,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x13: the event-choice panel is open.
+    // the event-choice panel is open.
     if (dialogPanel.hintShown[0x13] == 0 &&
         eventChoicePanel.visible && eventChoicePanel.animTimer0 >= 1.0f) {
         fireHint(0x13, VGAP_PANEL,
@@ -1375,7 +1366,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x14: the player holds an event and the tray icons have settled.
+    // the player holds an event and the tray icons have settled.
     if (dialogPanel.hintShown[0x14] == 0 &&
         hud.countEventsHeld() > 0 && !hud.anyEventSlotSlidingIn()) {
         float ex, ey;
@@ -1384,13 +1375,13 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
         return;
     }
 
-    // 0x15: the player's health has hit 0 (anchor: the HP display).
+    // the player's health has hit 0 (anchor: the HP display).
     if (dialogPanel.hintShown[0x15] == 0 && playerDowned) {
         fireHint(0x15, VGAP_PANEL, hud.tintHealth.posX, hud.tintHealth.posY);
         return;
     }
 
-    // 0x17: wrap-up, once the four stat-tile hints (0x03..0x06) have all shown.
+    // wrap-up, once the four stat-tile hints (0x03..0x06) have all shown.
     if (dialogPanel.hintShown[0x17] == 0 &&
         dialogPanel.hintShown[0x03] && dialogPanel.hintShown[0x04] &&
         dialogPanel.hintShown[0x05] && dialogPanel.hintShown[0x06] &&
@@ -1511,7 +1502,7 @@ void GameBoard::syncGlobalTileAlpha() {
 //      when sqrt(vx^2 + vy^2) drops below 0.0015625 (approx 1 pixel @ 640px),
 //      pixel-snap positionX/Y and clear the active flag.
 //
-// 2. cosine-eased pan. when +0x9B0 < 1.0:
+// 2. cosine-eased pan. when panProgress < 1.0:
 //      timer += dt * 5;
 //      if timer < 1.0: pos = lerp(start, target, 0.5 - cos(timer*PI)*0.5).
 //      else: snap pos to pixel grid + clamp timer = 1.0.
@@ -1614,19 +1605,19 @@ void GameBoard::animateCleanupQuadBob(float dt) {
     }
 }
 
-// FUN_10001ad30, discard-slide list at +0x96A0 per-frame animation.
+// FUN_10001ad30, discard-slide list per-frame animation.
 //
 // each node is 0x30 bytes (allocated by discardRackTile via operator_new(0x30)).
 // layout (start = tile's current pos at discard, target = rack-X-going-
 // off-screen; the tile slides back to its rack column then drops below):
-//   +0x00  prev          // sentinel-style doubly-linked
-//   +0x08  next
-//   +0x10  TileObject*   // the discarding tile
-//   +0x18  startX        // = tile's screen X at the moment discard fires
-//   +0x1C  startY        //   (= where the slide begins)
-//   +0x20  targetX       // = (slotIdx * 0.1953125 + 0.109375), rack column X
-//   +0x24  targetY       // = virtualHeight + offsets approx 1.68 (off-screen below)
-//   +0x28  timer         // 0..1; advances at dt/0.3 per frame
+// prev          // sentinel-style doubly-linked
+// next
+// TileObject*   // the discarding tile
+// startX        // = tile's screen X at the moment discard fires
+// startY        //   (= where the slide begins)
+// targetX       // = (slotIdx * 0.1953125 + 0.109375), rack column X
+// targetY       // = virtualHeight + offsets approx 1.68 (off-screen below)
+// timer         // 0..1; advances at dt/0.3 per frame
 //
 // per node: advance timer; when timer >= 1.0: unlink, delete the held
 // TileObject, free the node (= discard complete). otherwise lerp the held
@@ -1739,7 +1730,7 @@ void GameBoard::nemesisAdvance(int xpAmount) {
 // always runs nemesis.update (= FUN_100009094: nemesis spin + level number
 // tint). additionally:
 //   if nemesis.eatStep > 0:
-//     advance fires when timer at +0x2184 hits 1.0 and nemesis.eatFired
+//     advance fires when nemesis.posTransitionT hits 1.0 and nemesis.eatFired
 //     is still 0:
 //       set eatFired.
 //       newest page-tile = pageList.back().
@@ -1747,7 +1738,7 @@ void GameBoard::nemesisAdvance(int xpAmount) {
 //       else if content type == 4 (XP, dropped on snag kill): dispatch
 //         finalize-rack-place + HUD XP-marker bump.
 //       pop the page-list front (delete its tile + erase the entry).
-//     followup attack via FUN_100020aac when +0x2180 also at 1.0.
+//     followup attack via FUN_100020aac when nemesis.reformT also at 1.0.
 void GameBoard::updateNemesisAndCloseStrike(float dt, float touchInput) {
     nemesis.update(dt);
 
@@ -1810,7 +1801,7 @@ void GameBoard::updateNemesisAndCloseStrike(float dt, float touchInput) {
 // FUN_10001dd14, discardRackTile helper.
 //
 // pops a tile from rack[slotIdx], pushes a DiscardSlideBody entry onto the
-// discard-slide list at +0x96A0 (carrying the held tile + slide start/target
+// discard-slide list (carrying the held tile + slide start/target
 // pos pairs + a slide timer), then applies per-content-type extras:
 //
 // regardless of tile content, sets up:
@@ -1822,8 +1813,8 @@ void GameBoard::updateNemesisAndCloseStrike(float dt, float touchInput) {
 //
 // when skipExtraEffects (binary's `param_3 & 1`) is false, additionally:
 //   if snag-type == 0x49 (slot-3-darkness-trigger):
-//     applyTileResolutionDispatch(20 - +0x21A4)   // FUN_10001dbe4
-//     append a kind=0 decoration to the +0x9670 sub-collection
+//     applyTileResolutionDispatch(20 - nemesis.nemesisXP)   // FUN_10001dbe4
+//     append a kind=0 decoration to the actionQueue sub-collection
 //   if content-type == 0x11 (= 17, magnitude > 1): split tile via
 //     pushReserveTile(0x11, 0xFFFFFFFF) then apply half-magnitude.
 //   if content-type == 6 (HP tile):  chain to FUN_100020d80 (= setHP).
@@ -1873,7 +1864,7 @@ void GameBoard::discardRackTile(int slotIdx, bool skipExtraEffects) {
 
         // snag 0x49 (Scapegoat): "Can be discarded, which levels up Nemesis."
         // feed Nemesis the XP needed to finish its current level (20 - its
-        // within-level XP, nemesis.nemesisXP = gb+0x21A4), then queue the burst.
+        // within-level XP, nemesis.nemesisXP), then queue the burst.
         if (sc && sc->type == (int)SnagKind::Scapegoat) {
             nemesisAdvance(20 - nemesis.nemesisXP);   // FUN_10001dbe4
 
@@ -2097,7 +2088,7 @@ void GameBoard::applyOnDeathHpRefill() {
 // then dispatches:
 //   FUN_1000178fc(this) -> post-tile recompute (game.recomputeIcons)
 //   FUN_100017c04(this) -> status icon picker
-//   FUN_10004e0d0(audioEngine, &pageList, +0x9B4C) -> audio sync
+//   FUN_10004e0d0(audioEngine, &pageList, keysCollected) -> audio sync
 void GameBoard::applyChainStatBumpsToRack(float dt) {
 
     for (int i = 0; i < RACK_SLOT_COUNT; i++) {
@@ -2531,7 +2522,7 @@ void GameBoard::refillRackPostCommit() {
 }
 
 // FUN_10001b484, X-button hit-test (dead-end escape). consumes a tap on
-// the X-button quad at +0x8A0 when visible. on confirmed tap, bumps
+// the X-button quad (xButtonQuad) when visible. on confirmed tap, bumps
 // nemesis.eatTarget = max(pageCount - 1, eatTarget) and clears eatActive,
 // which routes through the state-7 -> state-9 trail-extension pipeline so
 // Nemesis crawls forward to one tile behind the player.
@@ -2610,11 +2601,11 @@ bool GameBoard::tryConsumeXButton() {
 //
 // HUD-level touch routing. early-out chain:
 //   1. HUD::queryReleaseTouch returns 0 -> no touch this frame -> false.
-//   2. game-internal touch state (+0x685C, an int): cases 1 / 2 / 3.
+//   2. game-internal touch state (an int): cases 1 / 2 / 3.
 //      case 1 -> encounter panel hit
 //      case 2 -> score panel hit
 //      case 3 -> discard-staging commit pass on hud.pendingDiscards
-//   3. held Event button at +0x8068 -> fire its effect via FUN_100020f80.
+//   3. held Event button (hud.releasedEventSlot) -> fire its effect via FUN_100020f80.
 //   4. case-3 commit: if pendingDiscards has staged entries, hand off to
 //      commitPendingDiscards.
 //
@@ -2637,11 +2628,11 @@ bool GameBoard::dispatchHexAndRackTouch(float dt, float touchInput) {
         // HUD top-left player-icon tapped -> open the user-stats panel.
         // binary (FUN_10001ae10 release-dispatch case 1):
         //   FUN_1000404b0(detailPanel, 0)  -> detailPanel.reset(0)
-        //   FUN_10000a9f4(gb+0xA3F8, gb+0x8270, gb+0x20)
+        //   FUN_10000a9f4(GameBoard.userStatsPanel, GameBoard.playerSystem, GameBoard.totalTurnCount)
         //                = userStatsPanel.open(playerSystem, &worldIndex)
         // historically mislabeled "encounter" in this branch.
         detailPanel.reset(0);
-        // binary passes gb+0x20 (= &totalTurnCount); the panel reads three
+        // binary passes GameBoard.totalTurnCount (= &totalTurnCount); the panel reads three
         // sequential ints (totalTurnCount, worldLevelIndex, snagsDefeated)
         // and formats them under the "World: %d Level: %d Items: %d" line.
         // the field-name vs displayed-label pairings don't perfectly
@@ -2655,7 +2646,7 @@ bool GameBoard::dispatchHexAndRackTouch(float dt, float touchInput) {
     if (s == 2) {
         // HUD menu icon tapped -> open the pause menu. binary:
         //   FUN_1000404b0(detailPanel, 0)  -> detailPanel.reset(0)
-        //   FUN_10002f688(gb+0x10, gb+0x14, gb+0xF488, gb+0xC)
+        //   FUN_10002f688(GameBoard.seVolume, GameBoard.bgmVolume, GameBoard.pauseMenu, GameBoard.tutorialFlag)
         //                = pauseMenu.open(seVolume, bgmVolume, tutorialFlag)
         detailPanel.reset(0);
         pauseMenu.open(seVolume, bgmVolume, tutorialFlag);
@@ -2777,7 +2768,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
     //     anchor heuristic: when the snag's parent tile is still in the
     //     rack and isn't the currently-selected rack tile, anchor = (0,0);
     //     otherwise anchor = current touch input position. (binary uses
-    //     game_board+0x97c which IS positionX/Y read as one qword.)
+    //     positionX/positionY read as one qword.)
     if (SnagContent* tension = findSnagInRackOrPage(0x25)) {
         TileObject* tensionTile = tension->tileParent;
         float origin[2] = { 0.0f, 0.0f };
@@ -3149,7 +3140,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
         case EventKind::Maelstrom: {
             // case 10: "Discard all your events. Gain {X} per event
             // discarded." count is what FUN_10000d7ac returns; mirror its
-            // body inline (4 tray slots at HUD+0x1bc8 with non-null head).
+            // body inline (4 eventTray slots with non-null head).
             int count = 0;
 
             for (int i = 0; i < 4; ++i) {
@@ -3351,7 +3342,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
             // case 19: "Set a held normal snag's {H} to 1." stage every
             // rack tile whose snagType == 1 and whose snag hp > 1; open
             // discard panel. setting {H} = 1 is a no-op on a 1-HP snag so
-            // the binary excludes those (SnagContent+0x13c gate). (the
+            // the binary excludes those (SnagContent.hp gate). (the
             // discard-panel confirm path applies the actual {H} = 1
             // mutation, but selection is what we set up here.)
             for (int i = 0; i < 5; ++i) {
@@ -5086,8 +5077,8 @@ void GameBoard::refreshDiscardConfirmIcon() {
 }
 
 // FUN_100020880. true if the given hex (col, row) is already occupied by:
-//   a) the Nemesis's reserved cell, when the nemesis is alive (visible byte
-//      at +0x9D0 set), or
+//   a) the Nemesis's reserved cell, when the nemesis is alive (nemesis.visible
+//      set), or
 //   b) any tile in the page list (gridCol/gridRow match).
 bool GameBoard::cellIsOccupied(int col, int row) const {
 
@@ -5228,7 +5219,6 @@ void GameBoard::dispatchHexMapPostCommit(TileObject* placedTile) {
         // not consumed by this; only the fadeTimer==3 producer cells are.
         hexMap.tryConsumeCellAt(placedTile->gridCol, placedTile->gridRow);
     }
-
 
     // ===================================================================
     // Section 2: snag-0x28 ("Fear") grow
@@ -5439,7 +5429,7 @@ void GameBoard::dispatchHexMapPostCommit(TileObject* placedTile) {
 //   5. rack tail walk: for each snag-0x3e (Bluff), set its atk display
 //      to (snag.atk >> 1), so the displayed atk shows half its real value.
 //   6. dispatch snag-death (FUN_100025dcc) when bVar15 holds; else set
-//      GameBoard+0x1c = 1 ("snag-handled" flag for downstream callers).
+//      GameBoard.snagActivationSuppressed = 1 ("snag-handled" flag for downstream callers).
 //   7. final tail: when no Milestone active and snag has HP and page
 //      list >= 2 and snag.type not in {10, 0x32}, send the snag walking
 //      toward the tile placed just before its own (= second-newest,
@@ -5464,8 +5454,8 @@ void GameBoard::dispatchSnagPostCommit(SnagContent* snag) {
     }
 
     // shared origin pointer: every action burst in this function uses
-    // &positionX (a 2-float pair at GameBoard+0x97C / +0x980) as its
-    // source position. matches the binary's `(long *)(param_1 + 0x97c)`.
+    // &positionX (a 2-float pair: positionX and positionY) as its
+    // source position.
     const float* boardOrigin = &positionX;
 
     // ---- section 1: apply player DEF item-ability bonus ----------------
@@ -5548,7 +5538,7 @@ void GameBoard::dispatchSnagPostCommit(SnagContent* snag) {
         case 0x6c: {  // Honesty: same body.
 
             if (!milestoneActive) {
-                TileObject* oldestTile = pageList.front();   // *(gb+0x1b0) = front node value
+                TileObject* oldestTile = pageList.front();   // front node value
                 snag->sendToward(oldestTile, false);
                 allowFinalSendToward = false;
                 dispatchDeath        = false;
@@ -5827,8 +5817,8 @@ void GameBoard::dispatchSnagPostCommit(SnagContent* snag) {
                 }
             }
 
-            // 0x6b's own action push (not via LAB_100025554; `lVar10 =
-            // param_2[0x90]` is set inline, then falls into the common tail).
+            // 0x6b's own action push (not via LAB_100025554; the snag parent
+            // is the action tileRef, then falls into the common tail).
             pushAction(0, boardOrigin, snagParent);
             break;
         }
@@ -6126,8 +6116,8 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
 
     if (snagType == 6) {
         // Obsession: rng-rolled chance to drop another snag-6 tile carrying
-        // a decremented chain-count at +0x490 (consumedFlag, init 0x64) and
-        // a bumped invocation counter at +0x494 (obsessionCount, init 2).
+        // a decremented chain-count (consumedFlag, init 0x64) and
+        // a bumped invocation counter (obsessionCount, init 2).
         int origConsumed = (int)snag->consumedFlag;
         int origCount    = snag->obsessionCount;
 
@@ -6555,10 +6545,10 @@ void GameBoard::applyEndOfTurnPipeline(float dt) {
     hexMap.tickFade();
 
     // tick the per-entry eligibility counter on every reserve tile. colorParam
-    // (TileReserveEntry+0x8) is a signed pop-eligibility gate: it starts at -1
+    // (TileReserveEntry.colorParam) is a signed pop-eligibility gate: it starts at -1
     // (already poppable) and ticks further negative each turn; rollRackTile
-    // pops an entry only when colorParam < 0. (= FUN_10001df54's --node+0x18
-    // walk over the +0x96D8 reserve list.)
+    // pops an entry only when colorParam < 0. (= FUN_10001df54's per-node
+    // colorParam decrement walk over the tileReserve list.)
     for (TileReserveEntry& entry : tileReserve) {
         entry.colorParam--;
     }
@@ -7658,12 +7648,12 @@ void GameBoard::setHP(uint32_t value) {
     pushStatTween(/*textStyle*/ 0, (int)delta, src, /*direction*/ 0);
 
     // death case: HP just hit 0. snagActivationSuppressed = true disables snag
-    // activation for the upcoming Nemesis-takeover sequence; flag1D = false
+    // activation for the upcoming Nemesis-takeover sequence; snagMarchPending = false
     // clears the chain-bonus flag so the takeover runs uninterrupted.
     if (newHP == 0) {
         playerDowned    = true;
         snagActivationSuppressed = true;
-        flag1D                   = false;
+        snagMarchPending                   = false;
 
         // achievement "Just a Flesh Wound" (= binary's FUN_10004dc74).
         // unconditional on hp-hit-zero; target is 20 deaths.
@@ -7722,7 +7712,7 @@ void GameBoard::setHP(uint32_t value) {
 }
 
 // =============================================================================
-// action queue (GameBoard+0x9670)
+// action queue (GameBoard.actionQueue)
 // =============================================================================
 
 // reconstructed from Ghidra FUN_1000386b0.
@@ -7797,7 +7787,7 @@ void GameBoard::kickActionAnim(float dt, ActionBody* node) {
     constexpr float SCALE_T1        = 0.7f;          // DAT_10005a224
     constexpr float ANIM_PI         = 3.1415927f;    // DAT_10005a228
     constexpr float ALPHA_END       = 255.0f;        // DAT_10005a22c
-    constexpr float RADIUS_T1_BASE  = 0.1328125f;    // immediate at FUN_100038530+0xa4
+    constexpr float RADIUS_T1_BASE  = 0.1328125f;    // immediate in FUN_100038530 (at 0x1000385d4)
 
     // advance animT by dt/0.6, clamp to 1.0.
     float t = node->animT + dt / ANIM_DURATION;
@@ -7874,7 +7864,7 @@ void GameBoard::clearActionQueue() {
 }
 
 // =============================================================================
-// stat-change tween queue (GameBoard+0x9650)
+// stat-change tween queue (GameBoard.statTween)
 // =============================================================================
 
 // reconstructed from Ghidra FUN_10002c00c (with FUN_10002c198 inlined).
@@ -8200,7 +8190,7 @@ void GameBoard::updateControlTileHints() {
             hint.quad.snapToPixelGrid();
 
             // alpha by distance bracket: binary uses a packed lookup
-            // 0x326496ff shifted right by ((dist - 1) * 8).
+            // shifted right by ((dist - 1) * 8).
             //   dist 1 -> 0xFF (full)
             //   dist 2 -> 0x96
             //   dist 3 -> 0x64
@@ -8372,7 +8362,7 @@ void GameBoard::setupDragCursorTabs(TileObject* picked) {
     }
 
     // exit cell coord for the rules-engine end-gate. binary reads
-    // `(int *)(param_3 + 0x9708)` = our exitCol/exitRow pair.
+    // the exitCol/exitRow pair.
     const int exitCoord[2] = {exitCol, exitRow };
 
     static constexpr int kDirDeltas[6][2] = {
@@ -8476,7 +8466,7 @@ void GameBoard::commitRackTilePickup(int slotIdx) {
     // bind active drag slot.
     draggedRackSlot = slotIdx;
 
-    // FUN_10001ff44, rack draw-order LRU (the +0x180 rackOrder list): drop any
+    // FUN_10001ff44, rack draw-order LRU (the rackOrder list): drop any
     // existing entry for this slot, then append the active drag slot so the
     // picked-up tile draws on top of the others in draw()'s rackOrder walk.
     rackOrder.remove(slotIdx);
@@ -8565,7 +8555,7 @@ bool GameBoard::tryPickupRackTile(TileObject* tile, bool commit) {
     }
 
     // outer gate 2: tile already has an active "kind 0" decoration -> pickup
-    // blocked. (port of FUN_100012470, walks the +0x228 decoration list.)
+    // blocked. (port of FUN_100012470, walks the decoration list.)
     if (tile->hasActiveDecorationOfKind(0)) {
         return false;
     }
@@ -8744,7 +8734,7 @@ bool GameBoard::tryPickupRackTile(TileObject* tile, bool commit) {
 
         case 0x52: {
             // Grief: only placeable if its own {D} is higher than the
-            // player's current {A}. binary reads board+0x83b4 = playerSystem
+            // player's current {A}. binary reads playerSystem
             // .attack and dereferences the snag with no null guard (same
             // reasoning as Infestation).
             uint32_t griefDef  = tile->getSnagIfAlive()->def;
@@ -8809,7 +8799,7 @@ bool GameBoard::tryPickupRackTile(TileObject* tile, bool commit) {
 //     touched tile, on success FUN_100023ac4 (commit pickup) sets
 //     draggedRackSlot.
 //   sub-path 3: draggedRackSlot != -1 (drag in progress) -> walks the 6
-//     directional neighbor positions (tab quads at +0x6E0..+0x6E5), picks
+//     directional neighbor positions (the 6 tile-cursor slots), picks
 //     the best fit, commits the tile to the page list or drops back into
 //     drag-tracking mode.
 //
@@ -9030,8 +9020,8 @@ void GameBoard::openSnagDetailWithCombatSim(int mode, const float* anchor,
     }
 
     // matches the binary's FUN_100023f84 -> FUN_10003fe64 arg order:
-    //   param_5 = iVar2 = playerDeathTurn  -> playerDeathTurns field (+0x1038)
-    //   param_6 = iVar3 = snagDeathTurn    -> snagDeathTurns   field (+0x1000)
+    //   param_5 = iVar2 = playerDeathTurn  -> playerDeathTurns field
+    //   param_6 = iVar3 = snagDeathTurn    -> snagDeathTurns   field
     // so the left slot shows the turn-snag-dies count and the right slot
     // shows the turn-player-dies count, matching what iOS renders.
     detailPanel.populateForSnag(0.098438f, anchor, snag,
@@ -9269,8 +9259,8 @@ void GameBoard::onPointerReleasedDuringDrag() {
 
             heldTile->setGridCoord(neighborCol, neighborRow);
 
-            // hint-quad positions at +0x798 (navArrowQuad, neighbor east)
-            // and +0x870 (backButtonQuad, neighbor west). only the
+            // hint-quad positions: navArrowQuad (neighbor east)
+            // and backButtonQuad (neighbor west). only the
             // backButton's X gets the 0.015625 offset; the Y component
             // adds nothing.
             HexCellPos navHint  = hexCellLinearXY(heldTile->gridCol + 1,
@@ -9354,7 +9344,7 @@ void GameBoard::onPointerReleasedDuringDrag() {
             finalizeTileRotation(heldTile, false, false);
 
             // clear all 6 tileCursorVisible flags (binary's strh + str pair
-            // covers +0x6E0..+0x6E5).
+            // covers all 6 slots).
             for (int j = 0; j < MAX_CURSOR_COUNT; j++) {
                 tileCursorVisible[j] = false;
             }
@@ -9371,16 +9361,16 @@ void GameBoard::onPointerReleasedDuringDrag() {
 //
 // drives the hex-cursor mirror + "where will this land" predictive marker
 // while the player is mid-drag of a rack tile. three branches keyed off
-// the touch state field at +0x99C:
+// the engine touch state (g->inputState()):
 //   touch state 1 (begin): hex-mirror kickoff. computes where the tile
 //     would land via FUN_100012fa4 (= hex-grid coord to screen coord), checks
 //     if that hex already has a tile in the page list, and starts the
 //     appropriate visual feedback.
 //   touch state 2 (moving): apply velocity-tracked smoothing. updates the
 //     pan anchor / prev-touch / velocity fields.
-//   touch state 0 (released): decay the +0x9C8 progress toward 0.
+//   touch state 0 (released): decay the tileAlphaProgress toward 0.
 //
-// when no drag is active (+0x99C = 0, the default), no branch matches input.
+// when no drag is active (the default), no branch matches input.
 void GameBoard::animateMidGrabHexHighlight(float dt) {
     Game* g = getGame();
 
@@ -9439,7 +9429,7 @@ void GameBoard::animateMidGrabHexHighlight(float dt) {
         // tap-inspect dispatch (FUN_10001bd2c body, continued).
         //
         // 1) convert touch to hex cell (FUN_100012fa4) in board-local space.
-        // 2) compare against the Nemesis cell at GameBoard+0x2168.
+        // 2) compare against the Nemesis cell (nemesis.nemesisGridCol/Row).
         // 3) walk the page list looking for a tile at that cell. if found:
         //      - active snag => snag detail panel
         //      - active named content => content detail panel
@@ -9596,7 +9586,7 @@ void GameBoard::animateMidGrabHexHighlight(float dt) {
         }
 
         // velocity-tracked smoothing: positionX/Y follow touch with anchor
-        // offset; +0x98C/+0x990 carry the smoothed velocity for inertial
+        // offset; panVelocityX/panVelocityY carry the smoothed velocity for inertial
         // release.
         positionX = g->touchX() + panAnchorX;
         positionY = g->touchY() + panAnchorY;
@@ -9665,8 +9655,8 @@ void GameBoard::animateMidGrabHexHighlight(float dt) {
 // rack tile is staged at a hex (selectedRackSlot != -1). navDragState
 // semantics:
 //   -1: idle, waiting for a touch on either the confirm button (=
-//       navArrowQuad at +0x6F0, right of placed tile) or the rotate button
-//       (= backButtonQuad at +0x7C8, left of placed tile).
+//       navArrowQuad, right of placed tile) or the rotate button
+//       (= backButtonQuad, left of placed tile).
 //    0: confirm button held; on release over the same button, the tile
 //       commits to the page list.
 //    1: rotate button held; continuous rotation of the held tile follows
@@ -9773,7 +9763,7 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
         // apply rotation directly: tile.rotation = anchor + delta(rad to deg)
         held->setRotationDirect(navDragAnchorRotation + deltaAngle * RAD_TO_DEG);
 
-        // hint quad position (+0x870 = backButtonQuad.posX/posY). offset
+        // hint quad position (backButtonQuad.posX/posY). offset
         // from the tile center by polarToRect(0.18125, deltaAngle + pi) so
         // the rotate button visually orbits the tile as the player drags.
         HexCellPos hintOffset = polarToRect(HINT_RADIUS, deltaAngle + PI_VAL);
@@ -9781,10 +9771,8 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
         backButtonQuad.quad.posY = held->mainQuad.posY + hintOffset.y;
 
         // stash the angle delta (degrees) in backButtonQuad.quad.rotation.
-        // the binary's +0x888 is exactly this field (backButtonQuad at
-        // +0x7C8, Quad.rotation at +0xC0, so 0x7C8 + 0xC0 = 0x888). reusing
-        // the rotation slot also drives the button's visible spin around
-        // the tile during the drag.
+        // reusing the rotation slot also drives the button's visible spin
+        // around the tile during the drag.
         backButtonQuad.quad.rotation = deltaAngle * RAD_TO_DEG;
 
         navDragDuration += dt;
@@ -9997,9 +9985,8 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
     held->suppressDecorationsOfKind(1);
 
     // clear the cursor visibility flags (the directional cursors are no
-    // longer needed once the tile commits). matches the binary's
-    // `strh wzr,[x19, #0x6e4]; str wzr,[x19, #0x6e0]` pair = clear all 6
-    // visibility bytes at +0x6E0..+0x6E5.
+    // longer needed once the tile commits). matches the binary's pair of
+    // stores that clear all 6 tileCursorVisible bytes.
     for (int i = 0; i < MAX_CURSOR_COUNT; i++) {
         tileCursorVisible[i] = false;
     }
@@ -10112,7 +10099,7 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
     case 0xe: {     // = Pause
         // walks the rack (slots 0..4) counting tiles whose contentType
         // is also 0xe; adds that count to BOTH ATK and DEF. also clears
-        // snagActivationSuppressed at +0x1D.
+        // snagActivationSuppressed.
         snagActivationSuppressed = false;
         int count = 0;
 
@@ -10213,7 +10200,7 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
         break;
     }
     case 0x15: {    // = Foresight
-        // sets combatEffectsSuppressed at +0x1E.
+        // sets combatEffectsSuppressed.
         combatEffectsSuppressed = true;
         audioCode = 0x46;
         break;
@@ -11099,7 +11086,7 @@ void GameBoard::applyPostTurnTileEffects() {
 }
 
 // =============================================================================
-// the in-game state machine: the big switch on `state` (+0x18) that lives
+// the in-game state machine: the big switch on `state` that lives
 // at the bottom of FUN_100018ac8. cases 1..10 each have their own commit /
 // transition logic; the default case (+ "fall through to default") just
 // re-applies the trailing scroll-bounds clamp.
@@ -11108,13 +11095,13 @@ void GameBoard::applyPostTurnTileEffects() {
 //   1: idle: accept input, route via dispatchHexAndRackTouch /
 //      tryConsumeXButton / onPointerReleasedDuringDrag / mid-grab anim.
 //   2: drag-tracking: player has selected a rack tile, finger moving.
-//   3: chain-bonus apply: runs once after a commit if flag1D set.
+//   3: chain-bonus apply: runs once after a commit if snagMarchPending set.
 //   4: snag activation: runs once if !snagActivationSuppressed.
 //   5: nemesis-interlock setup: scans page list for triggers.
 //   6: hex-pickup commit: player tapping a placed tile.
 //   7: post-resolve dispatch: refill rack, route to next state.
 //   8: end-of-turn pipeline: applyEndOfTurnPipeline + post-turn top-off.
-//   9: end-of-turn settle: gates on +0x8414 progress.
+//   9: end-of-turn settle: gates on playerSystem.characterPulseT progress.
 //  10: dim overlay: fades in / out for level transitions.
 // =============================================================================
 void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
@@ -11242,7 +11229,7 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
             break;  // stay in state 3 until animations settle
         }
 
-        if (flag1D) {
+        if (snagMarchPending) {
             marchPageSnags();
         }
 
@@ -11320,7 +11307,7 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
             nemesis.eatActive = false;
 
             if (exitReached == 0 || playerDowned) {
-                // death -> open ScorePanel via gb+0x01 (= scoreRequested
+                // death -> open ScorePanel via GameBoard.scoreRequested (= scoreRequested
                 // post-rename). do not use exitRequested here; that's the
                 // PauseMenu "Main Menu" path that returns to title with no
                 // score panel.
@@ -11347,10 +11334,10 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
 
         if (nemesis.eatTarget < 1) {
             // re-enter game state: state = 1, snagActivationSuppressed = 0,
-            // flag1D = 0, combatEffectsSuppressed = 0.
+            // snagMarchPending = 0, combatEffectsSuppressed = 0.
             state = 1;
             snagActivationSuppressed = false;
-            flag1D = false;
+            snagMarchPending = false;
             combatEffectsSuppressed = false;
             // already in default-like exit; skip writeNewState (state was
             // written directly) but do bypass the auto-write at the end.
@@ -11381,7 +11368,7 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
 
             // FUN_10001dbe4(..., 20 - nemesisXP) - credits exactly enough XP
             // to fill the remaining bank, triggering an immediate level-up.
-            // matches binary's `0x14 - +0x21A4` (= 0x14 - nemesis.nemesisXP).
+            // matches binary's `0x14 - nemesisXP` (= 0x14 - nemesis.nemesisXP).
             nemesisAdvance(20 - nemesis.nemesisXP);
 
             Game* g = getGame();
@@ -11402,7 +11389,7 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
 
             totalTurnCount += 1;
             levelTurnCount  += 1;
-            flag1D = true;
+            snagMarchPending = true;
             snagActivationSuppressed = false;
             combatEffectsSuppressed = false;
 
@@ -11423,7 +11410,7 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
 
             // re-enter the state machine: write only state back to 1. the
             // flag bytes at 0x1C/0x1D/0x1E were already written above (snag
-            // activation cleared, flag1D set to true, combat effects cleared)
+            // activation cleared, snagMarchPending set to true, combat effects cleared)
             // and stay that way.
             state = 1;
             break;
@@ -11638,7 +11625,7 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
 //
 // Pass 2 (only runs if Pass 1's queue ended empty): walks the page list a
 // second time. for each pair of consecutive tiles where the older tile has
-// alive snag of type 0xF and the older tile's stat at +0x490 > 1, dispatches
+// alive snag of type 0xF and the older tile's consumedFlag > 1, dispatches
 // FUN_10003de74 to apply the chain effect. plays sound 0x1F.
 void GameBoard::marchPageSnags() {
     // queue caps at 2: binary's `if (2 < local_58 + 1)` evicts oldest
@@ -11743,7 +11730,7 @@ void GameBoard::marchPageSnags() {
             if (curSnag != nullptr) {
 
                 if (curSnag->type == 0xF) {
-                    // +0x490 is per-kind scratch; type 0xF uses it as a small
+                    // is per-kind scratch; type 0xF uses it as a small
                     // chain-countdown counter. the binary reads/writes it as a
                     // 4-byte int, but the value always fits in consumedFlag's
                     // byte (the upper 3 bytes are padding, always zero), so the
@@ -11802,7 +11789,7 @@ void GameBoard::marchPageSnags() {
 //   1. visibility early-out.
 //   2. always-runs prologue: music post-fade dispatch, perk display tick,
 //      detail-panel update, ambient pickup hint cascade.
-//   3. dialog-pause early-out (+0x54B8 = DialogPanel.visible).
+//   3. dialog-pause early-out (DialogPanel.visible).
 //   4. sub-screen guards: each panel that's currently active consumes
 //      the entire frame and returns. five panels: encounter reward,
 //      tile inspect / item upgrade, item display, score display, encounter.
@@ -11826,16 +11813,15 @@ void GameBoard::update(float dt, float touchInput) {
     detailPanel.update(dt);                  // FUN_10003f0e4
     tickAmbientPickupHinting(dt, touchInput); // FUN_10001980c
 
-    // dialog-pause: when DialogPanel.visible is set (= +0x54B8), the
-    // entire game freezes behind the modal. matches binary's
-    // `if (param_3[0x54b8] != '\0') return;`.
+    // dialog-pause: when DialogPanel.visible is set, the entire game
+    // freezes behind the modal.
     if (dialogPanel.visible) {
         return;
     }
 
     // ---- sub-screen guards (5 cascading early-returns) ----
 
-    // 1. item-choice panel at +0xDEF0 (visible byte at +0xDEF8 = panel+0x08).
+    // 1. item-choice panel (visible byte = itemChoicePanel.visible).
     if (itemChoicePanel.visible) {
         itemChoicePanel.update(dt, touchInput);
 
@@ -11897,14 +11883,13 @@ void GameBoard::update(float dt, float touchInput) {
         return;
     }
 
-    // 2. level-up panel at +0xC7B8 (visible byte at +0xC7C0 = panel+0x08).
+    // 2. level-up panel (visible byte = levelUpPanel.visible).
     if (levelUpPanel.visible) {
         levelUpPanel.update(dt, touchInput);
 
-        // wait for the player to lock in their picks. readyToCommit at
-        // panel+0x1730 (= GameBoard+0xDEE8) is set by update() once 2
-        // picks are chosen (or 1 + 1 from each category when perkLevel(0xE)
-        // is 0).
+        // wait for the player to lock in their picks. readyToCommit is set
+        // by update() once 2 picks are chosen (or 1 + 1 from each category
+        // when perkLevel(0xE) is 0).
         if (!levelUpPanel.readyToCommit) {
             return;
         }
@@ -11937,7 +11922,7 @@ void GameBoard::update(float dt, float touchInput) {
             playerSystem.addOrUpgradePerk(picked->perkType);
         }
 
-        // bookkeeping counter at +0x83A8 (= PlayerSystem.currentLevel).
+        // bookkeeping counter (= PlayerSystem.currentLevel).
         playerSystem.currentLevel += 1;
         levelUpPanel.close();
 
@@ -11966,7 +11951,7 @@ void GameBoard::update(float dt, float touchInput) {
         return;
     }
 
-    // 3. event-choice panel at +0xB2A8
+    // 3. event-choice panel
     if (eventChoicePanel.visible) {
         eventChoicePanel.update(dt, touchInput);
 
@@ -12027,7 +12012,7 @@ void GameBoard::update(float dt, float touchInput) {
         return;
     }
 
-    // 4. pause menu at +0xF488.
+    // 4. pause menu.
     if (pauseMenu.visible) {
         pauseMenu.update(dt, touchInput);
 
@@ -12037,7 +12022,7 @@ void GameBoard::update(float dt, float touchInput) {
         seVolume  = pauseMenu.volumeSliders[0].linearValue;
         bgmVolume = pauseMenu.volumeSliders[1].linearValue;
 
-        // Main Menu byte (pauseMenu.exitRequest, +0xD9C) propagates even
+        // Main Menu byte (pauseMenu.exitRequest) propagates even
         // while pauseMenu is still visible: the tab-0 release path doesn't
         // call panelHide on the parent, so exitRequested is set before the
         // re-check below. case 5 in Game::update closes gb (and pauseMenu
@@ -12072,7 +12057,7 @@ void GameBoard::update(float dt, float touchInput) {
             dirty = true;
         }
 
-        // Forfeit byte (pauseMenu.scoreRequest, +0xD9D) propagates only
+        // Forfeit byte (pauseMenu.scoreRequest) propagates only
         // after pauseMenu closes: the Forfeit-confirm popup's own panelHide
         // is what closes pauseMenu, so this branch runs in the same frame
         // the popup commits.
@@ -12084,7 +12069,7 @@ void GameBoard::update(float dt, float touchInput) {
         return;
     }
 
-    // 5. UserStatsPanel at +0xA3F8 (= FUN_10000a594). when visible, consume
+    // 5. UserStatsPanel (= FUN_10000a594). when visible, consume
     // the frame and return early so gameplay input doesn't bleed through.
     if (userStatsPanel.visible) {
         userStatsPanel.update(dt);
@@ -12097,8 +12082,8 @@ void GameBoard::update(float dt, float touchInput) {
 
     // one-shot dispatchers: re-entry hooks for the HUD marker-bank fills
     // that finished last frame. the HUD marker tick raises hud.levelUpReady
-    // (= GameBoard+0x7FD8) when the XP bank fills, and hud.itemChoiceReady
-    // (= GameBoard+0x7FD9) when the CONTROL bank fills.
+    // when the XP bank fills, and hud.itemChoiceReady when the CONTROL
+    // bank fills.
     if (hud.levelUpReady != 0) {
         hud.levelUpReady = 0;
         levelUpPanel.open(&playerSystem);
@@ -12161,7 +12146,7 @@ void GameBoard::update(float dt, float touchInput) {
     }
 
     // rack-tile walk with "flipped upside-down" computation. setting
-    // TileObject+0x244 (rotationAnimActive) to true triggers the tile's
+    // TileObject.rotationAnimActive (rotationAnimActive) to true triggers the tile's
     // 180 deg flip via update()'s rotationAnimT lerp. two snags drive this:
     //   - Change (0x39) in rack: always flip every rack tile.
     //   - Whimsy (0x38) on board: flip every other turn (even-numbered).
@@ -12226,7 +12211,7 @@ void GameBoard::update(float dt, float touchInput) {
             // selected slot stays upright; everyone else flips when the
             // rack-flip predicate is set.
             bool flipBit = flipRackTiles && (i != selectedRackSlot);
-            rack[i]->rotationAnimActive = flipBit;  // = +0x244
+            rack[i]->rotationAnimActive = flipBit;
         }
 
         rack[i]->update(dt);
@@ -12250,8 +12235,8 @@ void GameBoard::initLevel(int characterIndex, uint32_t worldIndex,
 
     // section 1: achievement-tracker session begin + perk display reset.
     // matches FUN_1000161fc's first two calls:
-    //   FUN_10004d7ec(gamePtr + 0x42f8, 1);   -> achievementTracker.beginSession(1)
-    //   FUN_10004f3ac(this + 0x9e18);         -> achievementBanner.reset()
+    //   FUN_10004d7ec(achievementTracker, 1);  -> achievementTracker.beginSession(1)
+    //   FUN_10004f3ac(achievementBanner);      -> achievementBanner.reset()
     Game* gNow = getGame();
 
     if (gNow) {
@@ -12262,11 +12247,11 @@ void GameBoard::initLevel(int characterIndex, uint32_t worldIndex,
 
     // section 2: character / difficulty data.
     // matches the binary's opening writes in FUN_1000161fc:
-    //   *(param_1 + 8)    = param_3              ; gb.worldIndex
-    //   param_1[0xc]      = *(param_4 + 4)       ; gb.tutorialFlag = game.tutorialFlag
-    //   *(param_1 + 0x10) = *(param_4 + 0xc)     ; gb.seVolume     = game.globalSeVolume
-    //   *(param_1 + 0x14) = *(param_4 + 0x10)    ; gb.bgmVolume    = game.globalBgmVolume
-    // where param_4 = &game.settingsMagic_ (= game+0x2E6DC). this is the
+    //   gb.worldIndex   = param_3 (worldIndex)
+    //   gb.tutorialFlag = game.tutorialFlag
+    //   gb.seVolume     = game.globalSeVolume
+    //   gb.bgmVolume    = game.globalBgmVolume
+    // where param_4 = &game.settingsMagic_. this is the
     // global-to-board seeding path that carries the user's saved settings
     // into the gameplay session.
     this->worldIndex = worldIndex;
@@ -12287,8 +12272,8 @@ void GameBoard::initLevel(int characterIndex, uint32_t worldIndex,
     playerDowned = false;
 
     state = 0;
-    // clear counters at +0x20 through +0x40. all 7 ints surface on the
-    // post-run score panel (gb+0x20..gb+0x38).
+    // clear counters totalTurnCount through levelTurnCount. all 7 ints surface on the
+    // post-run score panel (GameBoard.totalTurnCount..GameBoard.eventsFired).
     totalTurnCount       = 0;
     worldLevelIndex      = 0;
     snagsDefeated        = 0;
@@ -12305,7 +12290,7 @@ void GameBoard::initLevel(int characterIndex, uint32_t worldIndex,
     memset(dialogPanel.hintShown, 0, 24);
     dialogPanel.anyHintFiredThisFrame = 0;
 
-    // free + clear the rack at +0x158. the binary calls a sub-object dtor
+    // free + clear the rack. the binary calls a sub-object dtor
     // (thunk_FUN_10001220c -> operator_delete) on each non-null entry. our
     // TileObject has a real dtor, so `delete` does the same job. on a fresh
     // first-level startup these are all null already; this loop matters when
@@ -12325,7 +12310,7 @@ void GameBoard::initLevel(int characterIndex, uint32_t worldIndex,
     }
 
     // section 4b: free every TileObject held by the placed-tile pagelist
-    // (+0x1A8) and the discard-slide list (+0x96A0), then clear both lists.
+    // and the discard-slide list, then clear both lists.
     // mirrors FUN_1000161fc's two walks + the FUN_100029320 / FUN_1000292c4
     // tail clears. without this, the tiles + snags placed on the board last
     // run survive across initLevel and reappear on the new run's hex grid.
@@ -12349,16 +12334,16 @@ void GameBoard::initLevel(int characterIndex, uint32_t worldIndex,
 
     // section 4c: drop the per-level cosmetic-variant rotation state so
     // initLevelContent re-seeds 0..0xB and re-rolls tileVariant. mirrors
-    // FUN_1000161fc's two collection clears at +0x128/+0x140.
+    // FUN_1000161fc's two collection clears (variantsUsed/variantsRemaining).
     variantsUsed.clear();
     variantsRemaining.clear();
 
     // section 4d: animation-banner seed bookkeeping. matches FUN_1000161fc's
-    // vector-clear + tree-free pair at +0x9DD0 / +0x9DE8.
+    // vector-clear + tree-free pair (animBannerSeedHistory/animBannerSeedPool).
     animBannerSeedHistory.clear();
     animBannerSeedPool.clear();
 
-    // section 5: spawn the Nemesis at +0x9D0 (matches binary FUN_1000161fc).
+    // section 5: spawn the Nemesis (matches binary FUN_1000161fc).
     // placeOnHexGrid is not called here in the binary either: at a fresh
     // level start the body segments stay un-UV'd and invisible until the
     // Nemesis is summoned in play. the restore path (FUN_100016b18 /
@@ -12368,7 +12353,7 @@ void GameBoard::initLevel(int characterIndex, uint32_t worldIndex,
     nemesis.setNemesisXP(0);
 
     // section 6: PlayerSystem reset + 3 starter baseItems.
-    // FUN_1000562f4(this + 0x8270, characterIndex) clears slots and applies
+    // FUN_1000562f4(playerSystem, characterIndex) clears slots and applies
     // the character portrait UV. then FUN_1000161fc spawns 3 baseItems via
     // operator_new(0x610) and pushes each, exactly mirrored here.
     playerSystem.reset(characterIndex);
@@ -12398,7 +12383,7 @@ void GameBoard::initLevel(int characterIndex, uint32_t worldIndex,
     playerSystem.currentHealth = playerSystem.maxHealth;
 
     // HUD level config (mirrors FUN_1000161fc): read stat values from the
-    // PlayerSystem fields at the binary's expected offsets +0x83AC..+0x83B8.
+    // PlayerSystem stat fields (HP, maxHP, attack, defence).
     // attack/defence are direct PlayerSystem fields; HP/MaxHP get computed
     // from CTRL aggregation in recomputeStats above.
     hud.setMaxHealth(playerSystem.maxHealth);
@@ -12426,7 +12411,7 @@ void GameBoard::initLevel(int characterIndex, uint32_t worldIndex,
     // path (FUN_100016b18 / restoreFromSnapshot) does reset both, since a
     // resume has no in-flight fade to preserve.
 
-    // FUN_10002f72c(this + 0xF488): Menu::panelHide(pauseMenu, 1).
+    // FUN_10002f72c(pauseMenu): Menu::panelHide(pauseMenu, 1).
     // ensures the pause menu is hidden when a new level starts.
     pauseMenu.panelHide(true);
 
@@ -12466,7 +12451,7 @@ void GameBoard::initLevelContent() {
     worldLevelIndex = worldLevelIndex + 1;
     exitReached         = 0;
     snagActivationSuppressed          = false;
-    flag1D          = true;
+    snagMarchPending          = true;
     combatEffectsSuppressed          = false;
     levelTurnCount    = 0;
 
@@ -12477,7 +12462,7 @@ void GameBoard::initLevelContent() {
     // (0..0xB) per level so consecutive levels don't reuse a sprite sheet.
     //
     // if variantsRemaining is empty, clear variantsUsed and re-seed the set
-    // with 0..0xB (matches FUN_1000165e8's `if (*(this+0x150) == 0)` branch).
+    // with 0..0xB (matches FUN_1000165e8's `if (variantsRemaining.empty())` branch).
     // then RNG-pick a variant from the set via stream 0, erase it, set
     // tileVariant, append to variantsUsed.
     if (variantsRemaining.empty()) {
@@ -12494,9 +12479,9 @@ void GameBoard::initLevelContent() {
     variantsRemaining.erase(it);
     variantsUsed.push_back(gridLayout);
 
-    // 7.5 reset rack-pickup + nav-drag state. binary writes 8 bytes at +0x198
-    // covering both draggedRackSlot (+0x198) and selectedRackSlot (+0x19C)
-    // at once, then 4 bytes at +0x1c0 = -1 (navDragState idle).
+    // 7.5 reset rack-pickup + nav-drag state. binary writes 8 bytes
+    // covering both draggedRackSlot and selectedRackSlot at once, then
+    // 4 bytes = -1 for navDragState (idle).
     draggedRackSlot  = -1;
     selectedRackSlot = -1;
     navDragState     = -1;
@@ -12523,7 +12508,7 @@ void GameBoard::initLevelContent() {
     nemesis.reset();
 
     // 7.10 clear nemesis eat-cycle state (last 16 bytes of NemesisRenderable).
-    // matches the binary's `memset(GameBoard+0x43F0, 0, 0x10)`.
+    // matches the binary's 16-byte memset over the eat-cycle block.
     nemesis.eatTarget = 0;
     nemesis.eatActive = false;
     nemesis.eatStep   = 0;
@@ -12534,7 +12519,7 @@ void GameBoard::initLevelContent() {
     // visible == 0 from the GameBoard memset, so these calls are no-ops.
     detailPanel.reset(1);
 
-    // explicit clear of detailPanel.touchHoldArea (gb+0x54A8). reset() bails
+    // explicit clear of detailPanel.touchHoldArea. reset() bails
     // when !visible, so we write the field unconditionally, matching
     // FUN_1000165e8's ordering (reset, then field clear, then dialog reset).
     detailPanel.touchHoldArea = 0;
@@ -12576,7 +12561,7 @@ void GameBoard::initLevelContent() {
     // abandons every in-flight burst without freeing the nodes.
     clearActionQueue();
 
-    // 7.19 reset the gameplay-items vector live-count (+0x96D0). draw 8.2
+    // 7.19 reset the gameplay-items vector live-count (gameplayItemsLiveCount). draw 8.2
     // (GameBoard::draw) walks gameplayItems[0..gameplayItemsLiveCount) each
     // frame; the vector itself keeps its allocation.
     gameplayItemsLiveCount = 0;
@@ -12628,7 +12613,7 @@ void GameBoard::initLevelContent() {
     // (kind=2) to the hex map so HexMap::draw can render the goal markers.
     {
         // FUN_100018408: roll a jitter (col, row) within +/- range. range is
-        // 0x32 (50) on level 1, 100 on later levels.
+        // 50 on level 1, 100 on later levels.
         int range = (worldLevelIndex == 1) ? 50 : 100;
 
         // RNG draws, stream 0 (cosmetic / common, since hex layout choice
@@ -12672,8 +12657,8 @@ void GameBoard::initLevelContent() {
         recomputeExitKeysCollected();
     }
 
-    // 7.25 reset the exit-arrow visibility (+0x9C60) and fade timer
-    // (+0x9C64). matches FUN_1000165e8's `*(this+0x9c60) = 0; *(this+0x9c64) = 0`.
+    // 7.25 reset the exit-arrow visibility (exitArrowVisible) and fade timer
+    // (exitArrowFade). matches FUN_1000165e8's clear of both to 0.
     exitArrowVisible = false;
     exitArrowFade    = 0.0f;
 
@@ -12721,13 +12706,13 @@ void GameBoard::initLevelContent() {
     }
 
     // 7.28 finalize display state (port of FUN_100017b44).
-    // the binary checks several conditions and writes 0 or 1 to HUD+0x958
-    // (= GameplayHUD::conditionalFlag). with pageCount == 0 the outer
+    // the binary checks several conditions and writes 0 or 1 to
+    // GameplayHUD::conditionalFlag. with pageCount == 0 the outer
     // condition fails, so the flag clears to 0.
     hud.conditionalFlag = false;
 
     // 7.29 HUD post-tile positioning (port of FUN_10000bab8). configures
-    // the conditionalIcon at HUD+0x880 with its standard UV / size / pos.
+    // the conditionalIcon with its standard UV / size / pos.
     hud.setConditionalIcon(GameplayHUD::ConditionalIconState::Default);
 
     // 7.30 X-button refresh (port of FUN_100017c04). resets visible / pressed
@@ -12825,7 +12810,7 @@ SnagContent* GameBoard::findSnagInRack(int snagType) {
     return rack[uVar3]->getSnagIfAlive();
 }
 
-// FUN_1000268c8, walk page list (sentinel at +0x1A8) forward via .next.
+// FUN_1000268c8, walk page list forward via .next.
 // matches when a tile's snagType (FUN_1000133f0) equals snagType, returns
 // the matched tile's SnagContent (FUN_100013410, alive-gated). when the
 // list is empty or no tile matches, returns null.
@@ -12866,7 +12851,7 @@ SnagContent* GameBoard::findSnagInRackOrPage(int snagType) {
 
 // FUN_100020254, roll a content type 2..0x75 for a fresh rack tile. iterates
 // the full type range, applies per-range filtering rules (skip / HUD-gated /
-// include), excludes anything in excludedSnagTypes (+0x9E00), then
+// include), excludes anything in excludedSnagTypes, then
 // RNG-picks from the survivors.
 int GameBoard::rollSnagType() {
     std::vector<int> candidates;
@@ -12906,7 +12891,7 @@ int GameBoard::rollSnagType() {
         }
 
         // filter against the run's excluded-snag-types set (= binary's
-        // FUN_100028178 against gb+0x9E00). empty until startRun seeds it.
+        // FUN_100028178 against GameBoard.excludedSnagTypes). empty until startRun seeds it.
         if (include && excludedSnagTypes.find(type) == excludedSnagTypes.end()) {
             candidates.push_back(type);
         }
@@ -13265,8 +13250,8 @@ SnagContent* GameBoard::pushReserveSnagTile(uint32_t kind, uint32_t colorParam) 
     tile->init();
 
     int gridIdx = rollContentGridIdx();
-    // setSnagVisual matches FUN_100012850. binary passes totalTurnCount (+0x20),
-    // levelTurnCount (+0x40), worldIndex (+0x8) for the trailing 3 ints.
+    // setSnagVisual matches FUN_100012850. binary passes totalTurnCount,
+    // levelTurnCount, worldIndex for the trailing 3 ints.
     tile->setSnagVisual(gridLayout, gridIdx, kind, &playerSystem,
                         totalTurnCount, levelTurnCount, static_cast<int>(worldIndex));
 
@@ -13282,7 +13267,7 @@ SnagContent* GameBoard::pushReserveSnagTile(uint32_t kind, uint32_t colorParam) 
 // GameBoard::dirtyXferSnapshot, port of FUN_1000269b8.
 //
 // pack the live GameBoard run-state into the slot-0 GameSnapshot at
-// Game+0x2E348. called from Game::update's mid-run save-trigger gate
+// Game.gameSnapshot_. called from Game::update's mid-run save-trigger gate
 // (this->dirty != 0 && this->state == 1 && !eventChoicePanel.visible)
 // when the player completes a save-worthy action. clears this->dirty
 // on entry; the caller sets Game::saveSlot0Dirty so the save framework
@@ -13301,7 +13286,7 @@ SnagContent* GameBoard::pushReserveSnagTile(uint32_t kind, uint32_t colorParam) 
 namespace {
 
 // FUN_100014d70, TileContent (kind, magnitude) extract.
-// writes out[0] = tc.type (+0x134), out[1] = tc.displayedMagnitude (+0x13C).
+// writes out[0] = tc.type, out[1] = tc.displayedMagnitude.
 void extractTileContent(const TileContent& tc, uint32_t out[2]) {
     out[0] = static_cast<uint32_t>(tc.type);
     out[1] = static_cast<uint32_t>(tc.displayedMagnitude);
@@ -13314,10 +13299,10 @@ void extractTileContent(const TileContent& tc, uint32_t out[2]) {
 // caller is responsible for zero-initing the buffer before the call so
 // untouched slots stay 0.
 //
-// the "full int" reads cover the 4 bytes at sc+0x490 (= consumedFlag byte
-// + pad491[3]). Reluctance (kind 0xF) writes 2 to this slot via 4-byte
+// the "full int" reads cover the 4 bytes at consumedFlag (= the consumedFlag
+// byte + pad491[3]). Reluctance (kind 0xF) writes 2 to this slot via 4-byte
 // cast in the binary; Obsession (kind 6) writes 0x64 via an 8-byte
-// combined store that also covers obsessionCount at +0x494.
+// combined store that also covers obsessionCount.
 void extractSnagContent(const SnagContent& sc, uint32_t out[6]) {
     out[0] = static_cast<uint32_t>(sc.type);
     out[1] = static_cast<uint32_t>(sc.hp);
@@ -13349,9 +13334,9 @@ void extractSnagContent(const SnagContent& sc, uint32_t out[6]) {
 }
 
 // FUN_100013dd8, extract a TileObject into the 3-block snapshot layout:
-//   tileFields3[0]  = tile.gridIdx       (+0xDC)
-//   *tileMirror     = tile.mirror byte    (+0xE0)
-//   tileFields3[2]  = tile.rotationStep  (+0xE4)
+//   tileFields3[0]  = tile.gridIdx
+//   *tileMirror     = tile.mirror byte
+//   tileFields3[2]  = tile.rotationStep
 //   contentFields2  = extractTileContent(*tile.content)    if present, else {0,0}
 //   snagFields6     = extractSnagContent(*tile.snagContent) if present, else 0s
 //   decorationsOut  = (kind, value) of each suppressed==0 decoration in the
@@ -13532,7 +13517,7 @@ void GameBoard::dirtyXferSnapshot(GameSnapshot& snap) {
     // 1. clear dirty trigger on entry, matches the binary's first store.
     this->dirty = false;
 
-    // 2. 7-int counter block at +0x20..+0x3B (totalTurnCount through
+    // 2. 7-int counter block (totalTurnCount through
     //    eventsFired). binary uses 4 overlapping 8-byte stores; we use
     //    direct field copies because our struct is typed.
     snap.totalTurnCount       = static_cast<uint32_t>(this->totalTurnCount);
@@ -13547,8 +13532,8 @@ void GameBoard::dirtyXferSnapshot(GameSnapshot& snap) {
     snap.worldIndex   = this->worldIndex;
     snap.tutorialFlag = (this->tutorialFlag != 0);
 
-    // 4. copy the 24 tutorial hint "shown" markers (dialogPanel.hintShown,
-    //    = gb+0x63F8) into the snapshot.
+    // 4. copy the 24 tutorial hint "shown" markers (dialogPanel.hintShown)
+    //    into the snapshot.
     std::memcpy(snap.hintFlags, dialogPanel.hintShown, sizeof(snap.hintFlags));
 
     // 5. simple field copies.
@@ -13567,8 +13552,8 @@ void GameBoard::dirtyXferSnapshot(GameSnapshot& snap) {
 
     // 7. 5 rack-tile snapshots. each rack[i] either is null (zero the
     //    landmark fields) or extracts via extractTileToSnapshot. binary
-    //    writes 4 fields when null: contentType (+0x88), flagA (+0x8C),
-    //    variant+extraFlag combined u64 (+0x90), snagType (+0x9C). our
+    //    writes 4 fields when null: contentType, flagA,
+    //    variant+extraFlag combined u64, snagType. our
     //    typed RackTileSnapshot zero-inits via value-init.
     for (int s = 0; s < 5; ++s) {
         RackTileSnapshot& r = snap.rackTiles[s];
@@ -13577,9 +13562,9 @@ void GameBoard::dirtyXferSnapshot(GameSnapshot& snap) {
         if (tile == nullptr) {
             // landmark zero pattern: gridIdx, mirror, rotationStep,
             // contentType, snagKind. the binary's null branch zeroes only
-            // these four scalar landmarks (rack-entry +0x88/+0x8c/+0x90 u64/
-            // +0x9c) and deliberately leaves the decorations vector (rack
-            // entry +0x30) untouched, so stale entries from a prior reuse of
+            // these four scalar landmarks (contentType, flagA, the
+            // variant+extraFlag u64, and snagType) and deliberately leaves
+            // the decorations vector untouched, so stale entries from a prior reuse of
             // this GameSnapshot persist (FUN_1000269b8).
             r.gridIdx      = 0;
             r.mirror       = false;
@@ -13751,7 +13736,7 @@ namespace {
 
 // FUN_10003b720, clear gb.hexMap.cells and re-add one cell per entry from
 // the snapshot's filtered list. equivalent to the binary's
-// `FUN_10003b720(gb+0x96F0, snap+0x328)`.
+// `FUN_10003b720(GameBoard.hexMap, snap.hexMapVec)`.
 void restoreHexMapFromSnapshot(HexMap& hexMap,
                                const std::vector<HexMapEntry>& entries) {
     hexMap.cells.clear();
@@ -13786,7 +13771,7 @@ void restoreNemesisFromSnapshot(NemesisRenderable& nem,
 // compute the integer facing direction (0..5) the Nemesis reloads with.
 // placeOnHexGrid converts it to a rotation via (facing - 4) * angleStep, so it
 // must match the binary exactly. from FUN_100016b18's inline cascade, which
-// compares the oldest placed tile (gb+0x1b0 = pageList.front(), the end the
+// compares the oldest placed tile (pageList.front(), the end the
 // Nemesis eats from first) against the saved Nemesis (col, row):
 //   tileCol >  nemCol -> (tileRow > nemRow) ? 2 : 1
 //   tileCol <  nemCol -> (tileRow < nemRow) ? 5 : 4
@@ -13832,8 +13817,8 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     // ---- 1. AchievementTracker.beginSession(0) + AchievementBanner reset ----
     //
     // matches FUN_100016b18's opening:
-    //   FUN_10004d7ec(game + 0x42F8, 0)   // tracker.beginSession(0)
-    //   FUN_10004f3ac(gb + 0x9E18)        // achievementBanner.reset()
+    //   FUN_10004d7ec(achievementTracker, 0)   // tracker.beginSession(0)
+    //   FUN_10004f3ac(achievementBanner)        // achievementBanner.reset()
     // sessionFlag=0 = "saved-game continue, not a fresh run" (preserves
     // damagedThisRun, etc.).
 
@@ -13854,7 +13839,7 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     tutorialFlag = snap.tutorialFlag ? 1 : 0;
 
     if (gNow) {
-        // matches the binary's settings-struct param at +0xC/+0x10. our
+        // matches the binary's settings-struct param (SE/BGM volume). our
         // initLevel reads the same source via the typed Game accessors;
         // no need for an inline settings pointer.
         seVolume  = gNow->globalSeVolume();
@@ -13862,9 +13847,9 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     }
 
     state                    = 1;          // game state machine = idle
-    snagActivationSuppressed = false;      // gb+0x1C low byte = 0
-    flag1D                   = true;       // gb+0x1D high byte = 1
-    combatEffectsSuppressed  = false;      // gb+0x1E = 0
+    snagActivationSuppressed = false;
+    snagMarchPending         = true;
+    combatEffectsSuppressed  = false;
 
     // clear "any hint fired this frame" on restore.
     dialogPanel.anyHintFiredThisFrame = 0;
@@ -13872,7 +13857,7 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     // ---- 3. 24-byte hint "shown" markers copy ----
     std::memcpy(dialogPanel.hintShown, snap.hintFlags, sizeof(snap.hintFlags));
 
-    // ---- 4. 7-int counter block at +0x20..+0x3B ----
+    // ---- 4. 7-int counter block ----
     totalTurnCount       = static_cast<int>(snap.totalTurnCount);
     worldLevelIndex      = static_cast<int>(snap.worldLevelIndex);
     snagsDefeated        = static_cast<int>(snap.snagsDefeated);
@@ -13880,7 +13865,7 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     levelsGained         = static_cast<int>(snap.levelsGained);
     itemsFound           = static_cast<int>(snap.itemsFound);
     eventsFired          = static_cast<int>(snap.eventsFired);
-    exitReached          = 0;                // gb+0x3C = 0 (per-level state flag)
+    exitReached          = 0;
     levelTurnCount       = static_cast<int>(snap.levelTurnCount);
     pickupSnagThreshold  = static_cast<int>(snap.pickupSnagThreshold);
     gridLayout           = static_cast<int>(snap.gridLayout);
@@ -13988,7 +13973,7 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     // matches FUN_100016b18's rack loop: clear playerDowned, then per slot
     // delete the old tile, allocate + init a fresh one, rebuild it from the
     // saved RackTileSnapshot fields, and set its rack position.
-    playerDowned = false;   // gb+0x8418 = 0
+    playerDowned = false;
 
     {
         const float virtualHeight = Renderer::getVirtualHeight();
@@ -14033,7 +14018,7 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     // be torn down before the rebuild; otherwise the old trail and the
     // restored trail coexist as exact duplicates, which forces the X-button
     // and makes the Nemesis eat the trail twice. matches FUN_100016b18, which
-    // walks gb+0x1b0 deleting each node->tile then FUN_100029320 clears it.
+    // walks pageList deleting each node->tile then FUN_100029320 clears it.
     for (TileObject* old : pageList) {
 
         if (old != nullptr) {
@@ -14083,7 +14068,7 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
                                   snagFields, /*decorations=*/nullptr,
                                   &playerSystem);
 
-            tile->committed = true;             // tile+0xF0 = 1
+            tile->committed = true;
             tile->setGridCoord(p.col, p.row);   // FUN_10001349c
 
             // position from FUN_100012f04(gridCol, gridRow, mode 0), which
@@ -14114,7 +14099,7 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
             playerSystem.setPosition(origin.x, origin.y);
         } else {
             // non-empty: avatar snaps onto the newest placed tile's quad
-            // position (tile+0xA8 / +0xAC), which section 8 just set.
+            // position (mainQuad.posX/posY), which section 8 just set.
             const TileObject* newest = pageList.back();
             playerSystem.setPosition(newest->mainQuad.posX,
                                      newest->mainQuad.posY);
@@ -14122,11 +14107,11 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     }
 
     // ---- 9. scroll bounds + board-translate seeding ----
-    navDragState = -1;                       // +0x1C0
+    navDragState = -1;
 
     for (int i = 0; i < MAX_CURSOR_COUNT; ++i) {
-        tileCursorVisible[i] = false;        // +0x6E0
-        tileCursorState[i]   = false;        // +0x6E6
+        tileCursorVisible[i] = false;
+        tileCursorState[i]   = false;
     }
 
     {
@@ -14140,8 +14125,8 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
         const float vh = Renderer::getVirtualHeight();
 
         if (pageList.empty()) {
-            positionX = 0.5f;                // +0x97C
-            positionY = vh * 0.5f;           // +0x980
+            positionX = 0.5f;
+            positionY = vh * 0.5f;
         } else {
             // center the board on the newest placed tile: subtract its hex
             // position from the screen-center anchor, then pixel-snap. the
@@ -14158,14 +14143,14 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
 
     panDragActive = false;                    // drag / inertial-fling flags
     panInertiaActive = false;
-    panProgress = 1.0f;                       // +0x9B0
+    panProgress = 1.0f;
     recomputeScrollBounds(0.0f);              // FUN_1000174c4 (ignores the arg)
-    tileAlphaMirror   = 0.0f;                 // +0x9C4
-    tileAlphaProgress = 0.0f;                 // +0x9C8
+    tileAlphaMirror   = 0.0f;
+    tileAlphaProgress = 0.0f;
 
     // ---- 10. Nemesis restore (FUN_100009998) ----
     //
-    // the Nemesis faces the oldest placed tile (= gb+0x1b0 = pageList.front(),
+    // the Nemesis faces the oldest placed tile (= pageList.front(),
     // the end it eats from first), rebuilt in section 8. seedNemesisFacing
     // derives the 0..5 facing dir from the relative grid positions; empty page
     // list -> null -> facing 0.
@@ -14175,8 +14160,8 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     const int facingInt = seedNemesisFacing(oldestPlaced, snap);
 
     // placeOnHexGrid takes the facing as a plain float value and recovers it
-    // with (int)facingDir (the binary stores the raw int facing at nemesis
-    // +0x17a0, then scvtf's (facing - 4) into the rotation). pass (float)int,
+    // with (int)facingDir (the binary stores the raw int facing in
+    // nemesis.facingDir, then scvtf's (facing - 4) into the rotation). pass (float)int,
     // exactly like the in-gameplay caller, not a reinterpreted bit pattern,
     // which reads back as 0 and pins every reload to one wrong rotation.
     restoreNemesisFromSnapshot(nemesis, snap, (float)facingInt);
@@ -14184,11 +14169,11 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     // ---- 11. nemesis eat-cycle clear + detail/dialog panel resets ----
     //
     // matches FUN_100016b18's inline post-Nemesis writes:
-    //   gb+0x43F0..+0x43FC = 0     (the 16-byte nemesis eat-cycle block)
-    //   FUN_1000404b0(gb+0x4408, 1) = detailPanel.reset(1)
-    //   gb+0x54A8 = 0              (detailPanel internal field, before
+    //   nemesis eat-cycle block = 0 (16 bytes)
+    //   FUN_1000404b0(GameBoard.detailPanel, 1) = detailPanel.reset(1)
+    //   detailPanel.touchHoldArea = 0 (before
     //                                dialog reset; reset() doesn't clear it)
-    //   FUN_10004128c(gb+0x54B8, 1) = dialogPanel.reset(1)
+    //   FUN_10004128c(GameBoard.dialogPanel, 1) = dialogPanel.reset(1)
     nemesis.eatTarget = 0;
     nemesis.eatActive = false;
     nemesis.eatStep   = 0;
@@ -14228,9 +14213,9 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
 
     // ---- 13b. stat-tween + action queue force-complete ----
     //
-    // FUN_10002c170(gb+0x9650) clears statTweenAnyAnim + bumps every live
+    // FUN_10002c170(GameBoard.statTween) clears statTweenAnyAnim + bumps every live
     // statTween's animT to 1.0f so the next update tick pops them.
-    // FUN_1000388cc(gb+0x9670) does the same for actionQueue entries.
+    // FUN_1000388cc(GameBoard.actionQueue) does the same for actionQueue entries.
     statTweenAnyAnim = false;
 
     for (TweenBody& entry : this->statTween) {
@@ -14248,7 +14233,7 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
         rngSeed(snap.rngSeeds[i], i);
     }
 
-    // ---- 15a. discard-slide list cleanup (gb+0x96A0) ----
+    // ---- 15a. discard-slide list cleanup (GameBoard.discardSlide) ----
     //
     // FUN_100016b18's free loop walks each entry deleting the held
     // TileObject before clearing the list.
@@ -14261,10 +14246,10 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
 
     this->discardSlide.clear();
 
-    // gb+0x96D0 = gameplayItemsLiveCount = 0
+    // GameBoard.gameplayItemsLiveCount = gameplayItemsLiveCount = 0
     this->gameplayItemsLiveCount = 0;
 
-    // ---- 15b. reserve queue cleanup (gb+0x96D8) ----
+    // ---- 15b. reserve queue cleanup (GameBoard.tileReserve) ----
     //
     // same pattern: delete each held TileObject, then clear the list.
     for (TileReserveEntry& entry : this->tileReserve) {
@@ -14315,10 +14300,10 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     // 17b. exit-arrow + dim-overlay reset. unlike initLevelContent (which
     // leaves the dim quad to case-10's cross-fade), FUN_100016b18 resets it
     // for a clean visual slate on the menu->game entry.
-    exitArrowVisible = false;            // +0x9C60
-    exitArrowFade    = 0.0f;             // +0x9C64
-    dimQuad.setAlpha(0);                 // FUN_100008388(gb+0x9C68, 0)
-    dimProgress      = 0.0f;             // +0x9D40
+    exitArrowVisible = false;
+    exitArrowFade    = 0.0f;
+    dimQuad.setAlpha(0);                 // FUN_100008388(GameBoard.dimQuad, 0)
+    dimProgress      = 0.0f;
 
     // 17c. force the dream-snippet banner to its hidden (faded-out) state
     // (FUN_10003a5d8 = forceFadeOutComplete, not FUN_10003a408 = reset). reset()

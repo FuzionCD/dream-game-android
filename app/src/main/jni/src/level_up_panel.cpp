@@ -23,9 +23,8 @@
 //
 //   phase 1: panel base ctor FUN_100057424(this, 641, 906, 251, 48) +
 //            vtable override to PTR_thunk_FUN_10002cbbc_100074540. the base
-//            ctor sets up bgDim (panel+0x20), frame9slice (panel+0xF8),
-//            titleQuad (panel+0x190), closeBg (panel+0x268), and the
-//            confirmButton Quad (panel+0x340).
+//            ctor sets up bgDim, frame9slice, titleQuad, closeBg, and the
+//            confirmButton Quad.
 //
 //   phase 2: per-stat-slot sub-object init loop (3 x 0x2E8 stride).
 //            init the slot's TileContent icon (lightweight, no setType yet),
@@ -263,8 +262,8 @@ void LevelUpPanel::init() {
         {20.0f, 123.0f},
     };
 
-    // glyph table pointer: game+0x10 = embedded BMFontTable for the panel font
-    // (3 BMFontTables live at game+0x10/+0x1220/+0x2430 per game.h, the first
+    // glyph table pointer: bmfontTable(0) is the embedded BMFontTable for the
+    // panel font (3 BMFontTables live in the Game struct per game.h, index 0
     // is the panel font used by all panel-resident TextItems).
     Game* perkGame = getGame();
     const BMFontTable* panelFontTable = nullptr;
@@ -355,7 +354,7 @@ void LevelUpPanel::open(PlayerSystem* playerSystem) {
     // overwrite this immediately, but the binary explicitly zeros it here.
     cachedAlpha = 0;
 
-    // step 4: cache the perkLevel(0xE) gate at +0x16F9. perk 0x0E grants
+    // step 4: cache the perkLevel(0xE) gate. perk 0x0E grants
     // "Can choose 2 stats or 2 perks on level up"; when active (> 0),
     // tap handler allows two picks from the same category, otherwise the
     // player must pick one stat + one perk.
@@ -397,7 +396,7 @@ void LevelUpPanel::open(PlayerSystem* playerSystem) {
             mag += playerSystem->perkLevel(0xD);
         }
 
-        // slot.value (at +0x178) = the +N AMOUNT the player gains. consumed
+        // slot.value = the +N amount the player gains. consumed
         // by getNextStatPick during commit drain.
         slot.value = mag;
 
@@ -445,7 +444,7 @@ void LevelUpPanel::open(PlayerSystem* playerSystem) {
     constexpr float NAME_TEXT_Y_OFFSET  = 0.0625f;     // DAT_10005a0cc
     constexpr float DESC_LINE_Y_BASE_PX = 72.0f;       // DAT_10005a0d0
     constexpr float DESC_LINE_Y_DIVISOR = 640.0f;      // DAT_10005a0d4 (= screen ref width)
-    constexpr float DESC_LINE_Y_STRIDE_PX = 25.0f;     // 0x19 per line
+    constexpr float DESC_LINE_Y_STRIDE_PX = 25.0f;
 
     for (int i = 0; i < PERK_SLOT_COUNT; ++i) {
         LevelUpPerkSlot& slot = perkSlots[i];
@@ -675,9 +674,8 @@ void LevelUpPanel::setAlpha(uint8_t a) {
     cachedAlpha = a;
 
     for (LevelUpStatSlot& slot : statSlots) {
-        // TileContent::setAlpha propagates onto baseQuad + colorTint (the
-        // icon Quad at slot+0x010 and the innerTint at slot+0x140), matching
-        // the binary's per-slot setAlpha pair.
+        // TileContent::setAlpha propagates onto the icon's baseQuad and its
+        // inner colorTint, matching the binary's per-slot setAlpha pair.
         slot.icon.setAlpha(a);
         slot.label0.setAlpha(a);
         slot.label1.setAlpha(a);
@@ -696,7 +694,7 @@ void LevelUpPanel::setAlpha(uint8_t a) {
 }
 
 // vtable[5], confirm button released over its bbox. for LevelUpPanel,
-// this latches readyToCommit = 1 (= the byte at panel+0x1730). next
+// this latches readyToCommit = 1. next
 // frame, gameBoardUpdate's level-up-panel branch sees the latch, runs
 // the commit drain, and calls close().
 void LevelUpPanel::onConfirmTapped() {
@@ -711,8 +709,8 @@ void LevelUpPanel::onConfirmTapped() {
 //   3. early-out if animTimer0 < 1.0 (still fading).
 //   4. early-out if Game.inputState != 1 (no active touch).
 //   5. compute local-space touch coords (touch - anchor).
-//   6. hit-test slots 0..5: stat slots use Label widget at slot+0x180,
-//      perk slots use Label widget at slot+0x010. on miss, return.
+//   6. hit-test slots 0..5 against each slot's label0 widget. on miss,
+//      return.
 //   7. dup-check: scan picksList for matching slotIdx. if found, play
 //      sound 7 (reject) and return.
 //   8. play sound 5 (accept).
@@ -930,9 +928,9 @@ void LevelUpPanel::draw() {
 // different sub-object layouts and so are handled separately.
 //
 //   stat slot (slotIdx 0..2):
-//     - sub-Quad at slot+0x010 + inner ColorTint at slot+0x140 (both via
+//     - the icon's baseQuad + inner colorTint (both via
 //       FUN_100014b54's bundled write)
-//     - main number ColorTint at slot+0x2B0 (via FUN_10003c8d8)
+//     - main number ColorTint (numberTint, via FUN_10003c8d8)
 //     - both written with the same 0xFFRRGGBB color: 0xFFFFFFFF for
 //       unselected (param_3 == 0), 0xFFC8C8C8 for selected (grey)
 //
@@ -940,9 +938,9 @@ void LevelUpPanel::draw() {
 //     - the slot's Perk* (3 sub-visuals: warnLine1, warnLine2, tint), tinted
 //       via FUN_100042150 with 0xFFFFFFFF (unselected) or 0xFFC8C8C8
 //       (selected)
-//     - the name TextItem at slot+0x140: its rgba field written with
+//     - the nameText TextItem: its rgba field written with
 //       a derived grey (0xFFFFFFFF or 0xFFC8C8C8), then applyColor()
-//     - 3 desc TextItems at slot+0x1C8, +0x250, +0x2D8: each rgba
+//     - 3 desc TextItems (descText[0..2]): each rgba
 //       set to a greenish grey (0xFFC8BEC8 bright, 0xFF968C96 dim, G
 //       channel raised above the R/B grey), then applyColor()
 void LevelUpPanel::setSlotSelected(int slotIdx, bool selected) {
@@ -954,7 +952,7 @@ void LevelUpPanel::setSlotSelected(int slotIdx, bool selected) {
         // FUN_10003c8d8(numberTint, &rgba) writes the same color into the
         // "+N" digit tint.
         LevelUpStatSlot& slot = statSlots[slotIdx];
-        uint8_t v = selected ? 0xC8 : 0xFF;   // 0xFFFFFFFF white or 0xFFC8C8C8 grey
+        uint8_t v = selected ? 0xC8 : 0xFF;   // white or 0xFFC8C8C8 grey
 
         slot.icon.baseQuad.setColor(v, v, v, 0xFF);
         slot.icon.colorTint.setColor(v, v, v);

@@ -17,9 +17,9 @@ class PlayerSystem;
 //   pickItemSet:       FUN_100035218   (= generate 1..4 candidate Items)
 //   close / cleanup:   FUN_10003568c   (deletes slot[].heldItem + candidateItem)
 //
-// ItemChoicePanel lives at GameBoard+0xDEF0 (size 0x1598 bytes). it's
-// triggered when GameBoard+0x7FD9 (= HUD+0x1BC1) is set by the HUD's CTRL
-// marker bank filling 10 markers. when open, the panel offers 1..4
+// ItemChoicePanel lives at GameBoard.itemChoicePanel (size 0x1598 bytes). it's
+// triggered when the HUD's CTRL marker bank fills 10 markers. when open,
+// the panel offers 1..4
 // "current vs offered" item comparison slots. the player taps a slot to
 // pick the offered item; on confirm, the selected item is cloned into
 // playerSystem.baseItems[type] (replacing the held item of the same type).
@@ -35,10 +35,10 @@ class PlayerSystem;
 // otherwise 1..3 depending on RNG inside pickItemSet).
 //
 // each slot has two display halves:
-//   - "held"      side at +0x000: a copy of the player's current item of
+//   - "held"      side: a copy of the player's current item of
 //                                  the same type as the candidate (for
 //                                  side-by-side comparison).
-//   - "candidate" side at +0x180: the offered item.
+//   - "candidate" side: the offered item.
 //
 // the slot owns both Item* pointers; both are allocated via operator_new
 // (the candidate is constructed by pickItemSet, the held by open() via
@@ -54,24 +54,22 @@ class ItemChoiceSlot {
 public:
 
     // ---- side A: HELD item (player's current item of this type) ----
-    Item*    heldItem;             // +0x000  owning ptr; freed at next open()'s prologue
-    float    heldPosX;             // +0x008  computed in open() from heldLabel layout
-    float    heldPosY;             // +0x00C
-    Label    heldLabel;            // +0x010..+0x0A8  6-glyph hit-test frame, atlas (70, 677)
-    Quad     heldDividerQuad;      // +0x0A8..+0x180  separator art between held & candidate,
+    Item*    heldItem;             // owning ptr; freed at next open()'s prologue
+    float    heldPosX;             // computed in open() from heldLabel layout
+    float    heldPosY;
+    Label    heldLabel;            // 6-glyph hit-test frame, atlas (70, 677)
+    Quad     heldDividerQuad;      // separator art between held & candidate,
                                    //                  atlas UV (0.226, 0.576)..+(0.072, 0.211)
 
     // ---- side B: CANDIDATE item (the offered upgrade) ----
-    Item*    candidateItem;        // +0x180  owning ptr; allocated by pickItemSet
-    float    candidatePosX;        // +0x188  computed from candidateLabel center
-    float    candidatePosY;        // +0x18C
-    Label    candidateLabel;       // +0x190..+0x228  3-glyph hit-test frame, atlas (488, 81)
-    Label    candidateBgLabel;     // +0x228..+0x2C0  3-glyph chrome frame, atlas (530, 81)
-    TextItem candidateNameText;    // +0x2C0..+0x348  candidate's getName() text
-    TextItem descText[2];          // +0x348..+0x458  candidate's 2 description lines
+    Item*    candidateItem;        // owning ptr; allocated by pickItemSet
+    float    candidatePosX;        // computed from candidateLabel center
+    float    candidatePosY;
+    Label    candidateLabel;       // 3-glyph hit-test frame, atlas (488, 81)
+    Label    candidateBgLabel;     // 3-glyph chrome frame, atlas (530, 81)
+    TextItem candidateNameText;    // candidate's getName() text
+    TextItem descText[2];          // candidate's 2 description lines
 };
-static_assert(sizeof(ItemChoiceSlot) == 0x458,
-              "ItemChoiceSlot must be exactly 0x458 bytes");
 
 class ItemChoicePanel : public Menu {
 public:
@@ -94,7 +92,7 @@ public:
     // prior slot.heldItem / candidateItem, allocates a fresh held-item
     // clone per slot, lays out per-slot Labels + TextItems, and kicks
     // vtable[3] for the first frame's update. trigger: gameBoardUpdate
-    // when the HUD CTRL bank fills (GameBoard+0x7FD9).
+    // when the HUD CTRL bank fills.
     void open(PlayerSystem* playerSystem);
 
     // FUN_100034b30. per-frame update + touch dispatch. on tap: hit-test
@@ -136,28 +134,26 @@ public:
 
     // ---- byte-exact field landmarks ----
     //
-    // Menu base class (+0x000..+0x41F) owns the panel chrome: vtable +
+    // Menu base class owns the panel chrome: vtable +
     // visible, anchorX/Y, fade state, bgDim Quad, frame9slice Label,
     // titleQuad Quad, closeBg Quad, confirmButton Quad, readyByte,
     // confirmPressed. see menu.h for full layout.
 
     // pointer back to GameBoard::detailPanel (= the tile-inspect / Item-card
-    // tooltip widget at GameBoard+0x4408). open()/close()/update() call
+    // tooltip widget at GameBoard.detailPanel). open()/close()/update() call
     // heldItemRef->reset(0) to dismiss any prior tooltip when entering /
     // leaving the item-choice flow, and update()'s held-side tap pops up
     // the detail panel showing the held item card.
-    DetailPanel* heldItemRef;                  // +0x420
+    DetailPanel* heldItemRef;
 
     static constexpr int MAX_SLOT_COUNT = 4;
-    ItemChoiceSlot   slots[MAX_SLOT_COUNT];    // +0x428..+0x1588
+    ItemChoiceSlot   slots[MAX_SLOT_COUNT];
 
-    // ---- tail (+0x1588..+0x1598): panel state ----
+    // ---- tail: panel state ----
 
-    int32_t          slotCount;                // +0x1588  active slot count (1..4)
-    int32_t          lastSelectedSlot;         // +0x158C  -1 = no selection;
+    int32_t          slotCount;                // active slot count (1..4)
+    int32_t          lastSelectedSlot;         // -1 = no selection;
                                                //          slot index when user taps
-    Item*            selectedItem;             // +0x1590  pointer into slots[].candidateItem
+    Item*            selectedItem;             // pointer into slots[].candidateItem
                                                //          consumed by gameBoardUpdate commit branch
 };
-static_assert(sizeof(ItemChoicePanel) == 0x1598,
-              "ItemChoicePanel must be exactly 0x1598 bytes");

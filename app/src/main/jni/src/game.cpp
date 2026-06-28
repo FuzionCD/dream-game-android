@@ -255,12 +255,12 @@ Game* Game::create() {
     // zero the whole struct (gameState_ is at offset 0). C++ container heads
     // (vectors, sets) inside this region get their RAII state restored via the
     // placement-new calls below.
-    memset(game, 0, GAME_STRUCT_SIZE);
+    memset(game, 0, sizeof(Game));
     memset(game->textures, 0, sizeof(game->textures));
 
     // explicit non-zero defaults from the binary's Game ctor (FUN_1000437a4
     // tail). stashedDifficulty_ defaults to 1 = Normal; the binary's
-    // `*(undefined4*)((long)param_3 + 0x2e6e4) = 1` write makes Normal the
+    // ctor writes 1 here, making Normal the
     // out-of-box difficulty when no save state has run yet.
     game->stashedDifficulty() = 1;
 
@@ -276,13 +276,13 @@ Game* Game::create() {
     game->boardPtr() = nullptr;
 
     // post-run score panel: heap-allocated via operator_new(0x1018) (matches
-    // binary's FUN_1000437a4 +0x19128 alloc + thunk_FUN_100010764 ctor).
+    // binary's FUN_1000437a4 alloc + thunk_FUN_100010764 ctor).
     game->scorePanel() = new ScorePanel();
     game->scorePanel()->init();
 
     // per-difficulty stat-history: the binary's tracker ctor (FUN_100036c54,
     // invoked from FUN_1000437a4 with a `bl 0x100037114` thunk) loops over
-    // the 3 list heads at tracker+0x69a8 and self-aliases each sentinel:
+    // the 3 list heads in the tracker and self-aliases each sentinel:
     //   *(puVar2 + 0) = puVar2;        // sentinel.prev = self
     //   *(puVar2 + 4) = puVar2;        // sentinel.next = self
     //   *(puVar2 + 8) = 0;             // count = 0
@@ -296,7 +296,7 @@ Game* Game::create() {
     // 3 std::set (pools), and 3 std::vector (unlocks lists) whose
     // empty-sentinels were just wiped. placement-new restores the C++
     // defaults; Shop::init then ports the binary's FUN_1000502d4 chrome
-    // construction (called from FUN_1000437a4 +0x880 via thunk
+    // construction (called from FUN_1000437a4 via thunk
     // 0x100051e1c).
     new (&game->shop()) Shop();
     game->shop().init();
@@ -314,7 +314,7 @@ Game* Game::create() {
     // fix applies; restore via placement-new of PersistentUnlocks.
     new (&game->shopSaveBuffer()) PersistentUnlocks();
 
-    // leaderboard xfer buffer. std::vector<XferEntry> at Game+0x2E788.
+    // leaderboard xfer buffer. std::vector<XferEntry>.
     new (&game->leaderboardSaveBuffer()) std::vector<LeaderboardMenu::XferEntry>();
 
     // save-slot scratch buffers (one std::vector<uint8_t> per slot; holds
@@ -326,13 +326,13 @@ Game* Game::create() {
     new (&game->saveScratch(3)) std::vector<uint8_t>();
     new (&game->saveScratch(4)) std::vector<uint8_t>();
 
-    // GameSnapshot at +0x2E348. owns 5 std::vector heads + 2 std::map
+    // GameSnapshot. owns 5 std::vector heads + 2 std::map
     // heads + a TileWeightPool, all RAII-managed C++ containers wiped
     // by the memset above, so placement-new restores their empty-
     // sentinel state.
     new (&game->gameSnapshot()) GameSnapshot();
 
-    // AchievementSaveBuffer at +0x2E7C0. owns 1 std::vector<int> + 4
+    // AchievementSaveBuffer. owns 1 std::vector<int> + 4
     // std::set<int>. same RAII restore.
     new (&game->achievementSaveBuffer()) AchievementSaveBuffer();
 
@@ -350,16 +350,16 @@ Game* Game::create() {
     // SaveSystem::load so a stored save file can override them; the prior
     // Game::init writes to these have been removed because they would
     // clobber a freshly-loaded save.
-    game->tutorialFlag()    = true;   // binary +0x2E6E0 = 1: tutorial on out of the box
-    game->globalSeVolume()  = 0.8f;   // +0x2E6E8
-    game->globalBgmVolume() = 0.5f;   // +0x2E6EC
+    game->tutorialFlag()    = true;   // binary sets tutorialFlag = 1: tutorial on out of the box
+    game->globalSeVolume()  = 0.8f;
+    game->globalBgmVolume() = 0.5f;
 
-    // AchievementTracker at +0x42F8. owns a std::map<int,int> counters and
+    // AchievementTracker. owns a std::map<int,int> counters and
     // two std::list<int> notification queues whose RAII state the memset
     // above just wiped. placement-new restores their empty-sentinels.
     new (&game->achievementTracker()) AchievementTracker();
 
-    // AchievementsMenu at +0x23508. 50 tiles, each with TextItem title /
+    // AchievementsMenu. 50 tiles, each with TextItem title /
     // description / progressText (std::string + std::vectors), shared
     // Label + Quads, and a std::map<int,int> sorted-display head, all
     // of which need their RAII members restored after the memset above.
@@ -380,7 +380,7 @@ Game* Game::create() {
         }
     }
 
-    SDL_Log("Game struct allocated (%d bytes)", GAME_STRUCT_SIZE);
+    SDL_Log("Game struct allocated (%d bytes)", (int)sizeof(Game));
     return game;
 }
 
@@ -661,8 +661,8 @@ void Game::init() {
     // (FUN_10005708c + FUN_1000570a8). matches FUN_100045250's prologue.
     // without this every session draws the same sequence from the default
     // seed of 999, producing identical item rolls / stat jitter / sound
-    // pitches every game. the level loader's per-level seed table at
-    // descriptor +0x358 re-seeds these later for deterministic layouts.
+    // pitches every game. the level loader's per-level seed table
+    // re-seeds these later for deterministic layouts.
     for (uint32_t i = 0; i < 5; ++i) {
         rngSeed((int)t + 1 + (int)i, i);
         rngAdvance(i);
@@ -670,12 +670,6 @@ void Game::init() {
 
     gameState() = 0;
     inputState() = 0;
-
-    // animation speed constants.
-    animTiming_005a_ = 0.005f;
-    animTiming_035_  = 0.035f;
-    animTiming_08a_  = 0.08f;
-    animTiming_08b_  = 0.08f;
 
     // (globalSeVolume / globalBgmVolume defaults are set in Game::create
     // before SaveSystem::load; see save_buffers.h. FUN_100045250 does
@@ -782,7 +776,7 @@ void Game::update(float dt) {
                 titleMenu().startButtonClicked = false;
 
                 // T = hasSavedRun ? 1 : 0. hasSavedRun is the slot-0
-                // loader's `*(ulong*)(game+0x2E6D0) = blobLength` write
+                // loader's `hasSavedRun = blobLength` write
                 // (FUN_10004762c). non-zero -> valid "sav" blob was
                 // deserialized at startup -> case 1 (resume via
                 // FUN_100016b18). zero -> no save -> case 0 (new run via
@@ -818,7 +812,6 @@ void Game::update(float dt) {
     }
 
     // update world/character selection (from FUN_100045410 decompilation)
-    // world at param_2 + 0x5b6c (int*) = game + 0x16DB0
     // from decompilation: only runs when overlay is not visible
     if (world().visible && !overlay().isVisible()) {
 
@@ -844,7 +837,6 @@ void Game::update(float dt) {
             if (boardPtr()) {
                 // from decompilation: FUN_1000161fc(*plVar1, param_2[0x6446], param_2[0x6447], ...)
                 // these are world().selectedCharType and world().worldIndex
-                // (same memory: world+0x2368 = game+0x19118, world+0x236C = game+0x1911C)
                 int characterType = world().selectedCharType;
                 int difficultyIndex = (int)world().worldIndex;
 
@@ -855,7 +847,7 @@ void Game::update(float dt) {
                 boardPtr()->initLevel(characterType, difficultyIndex,
                                       shop().snagPool, shop().eventPool);
 
-                // post-Level::generate tail (game+0x2E6E0 / game+0xb9b9).
+                // post-Level::generate tail (tutorialFlag / stashedDifficulty).
                 // tutorialFlag is reset because Level::generate consumed it
                 // (= seeded gb.tutorialFlag); stashedDifficulty captures the
                 // difficulty this run was launched at, consumed by case 0
@@ -905,12 +897,12 @@ void Game::update(float dt) {
             // ---- scoreRequested branch (= player died or tapped Forfeit,
             //      "show me my score") ----
             //
-            // mirrors FUN_100045410's outer `else` clause on the gb+0x01
+            // mirrors FUN_100045410's outer `else` clause on the GameBoard.scoreRequested
             // byte (= scoreRequested):
             //   - pick the keys-earned count from per-difficulty / per-state
             //     tables (DAT_10005a4d0/4dc/4e8) when state < 5, else fall
             //     back to the per-difficulty cap (easy=3, normal=6, hard=8)
-            //   - open ScorePanel with the gb+0x20..+0x38 run-stat array
+            //   - open ScorePanel with the GameBoard.totalTurnCount run-stat array
             //   - call FUN_100037d3c (stat-history insert) -> returns rank
             //     for setResultRankVisual
             //   - call FUN_100054254 + music sync
@@ -920,7 +912,7 @@ void Game::update(float dt) {
             // gets wired alongside.
             if (gb->scoreRequested && scorePanel() && !scorePanel()->visible) {
 
-                // keys-earned lookup. binary reads gb+0x24 = worldLevelIndex
+                // keys-earned lookup. binary reads GameBoard.worldLevelIndex = worldLevelIndex
                 // (= 1-indexed level the player reached this run; bumps in
                 // initLevelContent). tables at DAT_10005a4d0/4dc/4e8 hold 3
                 // ints per difficulty for levels 2/3/4; level 1 yields 0
@@ -955,7 +947,7 @@ void Game::update(float dt) {
                 keys = 5;
 #endif
 
-                // gb+0x20 is the 7-int run-stat array consumed by the score
+                // GameBoard.totalTurnCount is the 7-int run-stat array consumed by the score
                 // panel's open. fields in order: totalTurnCount,
                 // worldLevelIndex, snagsDefeated, specialSnagsDefeated,
                 // levelsGained, itemsFound, eventsFired.
@@ -967,16 +959,16 @@ void Game::update(float dt) {
                 // panel's result-rank visual (medal / trophy). param order
                 // matches the binary call site in FUN_100045410:
                 //   tracker, worldIndex, playerSystem.characterIndex,
-                //   board+0x30 (levels), board+0x34 (items),
-                //   worldLevelIndex - 1 (worlds), board+0x20 (turns),
-                //   encounter+0xe48 (totalScore)
+                //   levelsGained, itemsFound,
+                //   worldLevelIndex - 1 (worlds), totalTurnCount (turns),
+                //   totalScore
                 const int rank = scoreHistory().insertEntry(
                     static_cast<uint32_t>(worldIdx),
                     static_cast<uint32_t>(gb->playerSystem.characterIndex),
-                    static_cast<uint32_t>(counts[4]),    // levelsGained (gb+0x30)
-                    static_cast<uint32_t>(counts[5]),    // itemsFound (gb+0x34)
+                    static_cast<uint32_t>(counts[4]),    // levelsGained (GameBoard.levelsGained)
+                    static_cast<uint32_t>(counts[5]),    // itemsFound (GameBoard.itemsFound)
                     static_cast<uint32_t>(gb->worldLevelIndex - 1),
-                    static_cast<uint32_t>(counts[0]),    // totalTurnCount (gb+0x20)
+                    static_cast<uint32_t>(counts[0]),    // totalTurnCount (GameBoard.totalTurnCount)
                     scorePanel()->totalScore);
 
                 scorePanel()->setResultRankVisual(rank);
@@ -988,7 +980,7 @@ void Game::update(float dt) {
                 shop().addKeys(keys);
 
                 // invalidate the mid-run resume save (= FUN_100045410's
-                // `param_2[0xb8d0] = 2`, i.e. game+0x2E340 = 2). the run is
+                // `param_2[0xb8d0] = 2`, i.e. saveSlot0Dirty = 2). the run is
                 // over, so the snapshot must be deleted, otherwise the next
                 // Start tap would resume this dead run straight into the
                 // game-over screen. encodeSavedGame's dirty==2 branch clears
@@ -1063,8 +1055,8 @@ void Game::update(float dt) {
     // T=7/8/9 set sites: fire when the shop / leaderboard / achievements
     // sub-screens flag closeRequested. all three reach the title-return
     // tail (cases 7/8/9 in the switch). timer for all three is touchY,
-    // matching the binary's *(*(long*)0x10007e868 + 0xc) lookup
-    // (DAT_10007e868 = global game ptr, game+0xc = touchY_).
+    // matching the binary's lookup of touchY_ through the global
+    // game ptr (DAT_10007e868).
     // shop per-frame tick (FUN_1000525f4). drives the unlock-reveal anim
     // state machine + input hit-tests while visible. binary calls this
     // unconditionally inside Game::update's switch; we gate on visible
@@ -1138,8 +1130,7 @@ void Game::update(float dt) {
     // the iOS Game::update's other per-frame work (tile icons, event menu,
     // stats, menus) all runs inside GameBoard::update, called above; there are
     // no separate top-level calls for it. the only unported top-level piece is
-    // FUN_100045f6c, a debug frame counter writing to an undisplayed TextItem
-    // at game+0x3640.
+    // FUN_100045f6c, a debug frame counter writing to an undisplayed TextItem.
 
     // transitionTarget switch: fires once when the overlay completes its
     // open animation. each case mirrors a labeled branch in FUN_100045410's
@@ -1157,7 +1148,7 @@ void Game::update(float dt) {
                 // {0..29} minus shop.facePool (= the unlocked-face IDs),
                 // then hands it to World::generate which rng-pops one
                 // ID per tile. binary's worldIndex source is the cached
-                // stashedDifficulty_ at game+0x2E6E4.
+                // stashedDifficulty_.
                 std::set<int> unlockedFaces;
 
                 for (int i = 0; i < 30; i++) {
@@ -1329,40 +1320,40 @@ void Game::draw() {
 
     // draw subsystems in order (from FUN_100046000 decompilation):
 
-    // 1. menu (pointer at game+0x19120)
+    // 1. menu (pointer)
     if (boardPtr() && boardPtr()->visible) {
         boardPtr()->draw();
     }
 
-    // 2. world/character selection (at game+0x16DB0)
+    // 2. world/character selection
     if (world().visible) {
         world().draw();
     }
 
-    // 3. shop (at game+0x19130). drawn between world and TitleMenu per
+    // 3. shop. drawn between world and TitleMenu per
     // FUN_100046000 ordering.
     if (shop().visible) {
         shop().draw();
     }
 
-    // 4. leaderboard menu (at game+0x1CB18). FUN_100037c28.
+    // 4. leaderboard menu. FUN_100037c28.
     if (leaderboardMenu().visible) {
         leaderboardMenu().draw();
     }
 
-    // 5. achievements menu (at game+0x23508). FUN_100058eb4.
+    // 5. achievements menu. FUN_100058eb4.
     if (achievementsMenu().visible) {
         achievementsMenu().draw();
     }
 
-    // 6. title screen (at game+0x4460)
+    // 6. title screen
     if (titleMenu().visible) {
         titleMenu().draw();
     }
 
-    // 7. score panel (pointer at game+0x19128). drawn after the title menu
+    // 7. score panel (pointer). drawn after the title menu
     // so it overlays the gameplay scene at run-end. matches FUN_100046000's
-    // visible-byte check at *(*(game + 0x19128)).
+    // visible-byte check on the scorePanel pointer.
     if (scorePanel() && scorePanel()->visible) {
         scorePanel()->draw();
     }

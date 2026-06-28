@@ -46,7 +46,7 @@
 // the PlayerSystem (player avatar), the tile reserve queue, the 5-tile
 // rack, and the placed-tiles page list.
 //
-// allocated with operator_new, pointer stored at Game+0x19120 (boardPtr).
+// allocated with operator_new, pointer stored at Game.boardPtr_ (boardPtr).
 // uses texture 9 (ui1.png) for most UI elements, texture 8 (sheet1.png) for
 // portraits and icons, and tiles{1..4}.png for hex faces.
 
@@ -58,14 +58,14 @@
 // the libc++ aarch64 std::list head order matches the binary's existing
 // (Prev, Next, Count) field order at each list's base offset, and the node
 // layout matches the binary's heap-allocated node objects exactly. these
-// payload types are what the binary stores at node+0x10..end and what
+// payload types are the body the binary stores in each node, and what
 // std::list<Body> wraps with its prev/next link header.
 
-// rack-render-order list at GameBoard+0x180, `value` = int slot index 0..4.
+// rack-render-order list at GameBoard.rackOrder, `value` = int slot index 0..4.
 // std::list<int> node = 16 (prev/next) + 4 (int) + 4 (pad) = 24 bytes.
 // nothing to declare here; we use std::list<int> directly.
 
-// action queue at GameBoard+0x9670, `value` = per-tile cosmetic side-effect.
+// action queue at GameBoard.actionQueue, `value` = per-tile cosmetic side-effect.
 // `actionType == 0` is the visual icon-burst variant (10 particle TileIcons
 // spinning around a source point; see kickActionAnim). other types stash
 // data for off-tick consumption (cross-rack rules + Pain HP-drain).
@@ -76,13 +76,13 @@
 // the binary keeps in sync with the vector's size; the draw walk reads
 // count, not vector::size.
 struct ActionBody {
-    int32_t               actionType;  // +0x00
-    float                 animT;       // +0x04   1.0 = completed
-    float                 dataX;       // +0x08   source pos X
-    float                 dataY;       // +0x0C   source pos Y
-    class TileObject*     tileRef;     // +0x10   nullable; pos added to data
-    std::vector<TileIcon> particles;   // +0x18   24 bytes (libc++ aarch64)
-    uint64_t              count;       // +0x30   live particle count
+    int32_t               actionType;
+    float                 animT;       // 1.0 = completed
+    float                 dataX;       // source pos X
+    float                 dataY;       // source pos Y
+    class TileObject*     tileRef;     // nullable; pos added to data
+    std::vector<TileIcon> particles;   // 24 bytes (libc++ aarch64)
+    uint64_t              count;       // live particle count
 
     ActionBody()
         : actionType(0)
@@ -93,10 +93,8 @@ struct ActionBody {
         , particles()
         , count(0) {}
 };
-static_assert(sizeof(ActionBody) == 0x38,
-              "ActionBody must be 0x38 bytes (= 0x48 ActionNode - 0x10 prev/next)");
 
-// stat tween queue at GameBoard+0x9650: the floating "+N" / "-N" digit
+// stat tween queue at GameBoard.statTween: the floating "+N" / "-N" digit
 // display that pops up next to a stat number when ATK / DEF / HP changes.
 //
 // each tween embeds a ColorTint (the digit-display widget rendering the
@@ -108,13 +106,12 @@ static_assert(sizeof(ActionBody) == 0x38,
 // deeper combat-resolution paths (FUN_10001df54, FUN_10001f91c,
 // FUN_100020f80) that surface stat changes from end-of-turn dispatch.
 struct TweenBody {
-    ColorTint   tint;       // +0x00..+0x37 (0x38; the digit display)
-    float       sourceX;    // +0x38
-    float       sourceY;    // +0x3C
-    float       targetX;    // +0x40
-    float       targetY;    // +0x44
-    float       animT;      // +0x48
-    uint8_t     pad4C[4];   // +0x4C..+0x4F  (alignment to 8B)
+    ColorTint   tint;       // (0x38; the digit display)
+    float       sourceX;
+    float       sourceY;
+    float       targetX;
+    float       targetY;
+    float       animT;
 
     // tint is value-init'd by ColorTint having no default ctor; fields stay
     // garbage. push sites call tint.init() right after the list emplace.
@@ -124,48 +121,39 @@ struct TweenBody {
         , sourceY(0.0f)
         , targetX(0.0f)
         , targetY(0.0f)
-        , animT(0.0f)
-        , pad4C{} {}
+        , animT(0.0f) {}
 };
-static_assert(sizeof(TweenBody) == 0x50,
-              "TweenBody must be 0x50 bytes (= 0x60 TweenNode - 0x10 prev/next)");
 
-// tile reserve queue at GameBoard+0x96D8: a FIFO of pre-built tiles waiting to
+// tile reserve queue at GameBoard.tileReserve: a FIFO of pre-built tiles waiting to
 // be dealt into the rack. each entry pairs a TileObject* with colorParam, a
 // signed pop-eligibility counter (a misnomer; rename pending). every push sets
 // it to -1 (0xFFFFFFFF = already poppable) and the per-turn pipeline ticks it
 // further negative; rollRackTile pops an entry only when colorParam < 0. the
 // save snapshot round-trips the value verbatim.
 struct TileReserveEntry {
-    class TileObject* tile;        // +0x00
-    uint32_t          colorParam;  // +0x08
-    uint8_t           pad0C[4];    // +0x0C..+0x0F (alignment to 8B)
+    class TileObject* tile;
+    uint32_t          colorParam;
 
     TileReserveEntry()
         : tile(nullptr)
-        , colorParam(0)
-        , pad0C{} {}
+        , colorParam(0) {}
 
     TileReserveEntry(class TileObject* t, uint32_t cp)
         : tile(t)
-        , colorParam(cp)
-        , pad0C{} {}
+        , colorParam(cp) {}
 };
-static_assert(sizeof(TileReserveEntry) == 0x10,
-              "TileReserveEntry must be 0x10 bytes (= 0x20 TileReserveNode - 0x10 prev/next)");
 
-// discard-slide list at GameBoard+0x96A0: tiles being animated off the rack.
+// discard-slide list at GameBoard.discardSlide: tiles being animated off the rack.
 // each entry holds the discarding tile plus its slide animation state
 // (start/target positions + timer). when timer >= 1.0, the slide is complete
 // and tickDiscardingTilesAnimation deletes the tile and erases the entry.
 struct DiscardSlideBody {
-    class TileObject* tile;       // +0x00
-    float             startX;     // +0x08 (= tile.posX at the moment discard fires)
-    float             startY;     // +0x0C
-    float             targetX;    // +0x10 (= rack column X, off-screen)
-    float             targetY;    // +0x14 (= virtualHeight + offsets, ~1.68 below screen)
-    float             timer;      // +0x18 (0..1, dt/0.3 per frame)
-    uint8_t           pad1C[4];   // +0x1C..+0x1F (alignment to 8B)
+    class TileObject* tile;
+    float             startX;     // (= tile.posX at the moment discard fires)
+    float             startY;
+    float             targetX;    // (= rack column X, off-screen)
+    float             targetY;    // (= virtualHeight + offsets, ~1.68 below screen)
+    float             timer;      // (0..1, dt/0.3 per frame)
 
     DiscardSlideBody()
         : tile(nullptr)
@@ -173,23 +161,10 @@ struct DiscardSlideBody {
         , startY(0.0f)
         , targetX(0.0f)
         , targetY(0.0f)
-        , timer(0.0f)
-        , pad1C{} {}
+        , timer(0.0f) {}
 };
-static_assert(sizeof(DiscardSlideBody) == 0x20,
-              "DiscardSlideBody must be 0x20 bytes (= 0x30 node - 0x10 prev/next)");
 
-// std::list head + node size asserts on libc++ aarch64. all list heads are
-// 24 bytes (= { sentinel.prev (8), sentinel.next (8), size (8) }). a
-// drift here would invalidate every offsetof assert below.
-static_assert(sizeof(std::list<int>)               == 0x18, "std::list head must be 24 bytes (libc++ aarch64)");
-static_assert(sizeof(std::list<class TileObject*>) == 0x18, "std::list head must be 24 bytes (libc++ aarch64)");
-static_assert(sizeof(std::list<TileReserveEntry>)  == 0x18, "std::list head must be 24 bytes (libc++ aarch64)");
-static_assert(sizeof(std::list<DiscardSlideBody>)  == 0x18, "std::list head must be 24 bytes (libc++ aarch64)");
-static_assert(sizeof(std::list<ActionBody>)        == 0x18, "std::list head must be 24 bytes (libc++ aarch64)");
-static_assert(sizeof(std::list<TweenBody>)         == 0x18, "std::list head must be 24 bytes (libc++ aarch64)");
-
-// 5 rack slots: the tiles in the player's hand (binary: GameBoard+0x158).
+// 5 rack slots: the tiles in the player's hand (binary: GameBoard.rack).
 // slot 0 is "freshest"; every populateRack() pops a tile from the reserve
 // queue and slides existing slots up one index. when the player plays a
 // tile, it moves from rack[N] into the page list.
@@ -225,7 +200,7 @@ public:
 
     // FUN_1000161fc: initialize for a new level (sets visible, populates
     // content). characterIndex feeds the character token sprite +
-    // PlayerSystem reset; worldIndex stored at +0x8 for the level loader
+    // PlayerSystem reset; worldIndex stored for the level loader
     // / stat selection. snagFilter / eventFilter come from shop.snagPool
     // / shop.eventPool; seeds the gameplay-side exclusion sets so only
     // unlocked snags / events appear in rack rolls + event choice panel.
@@ -239,7 +214,7 @@ public:
     // FUN_1000269b8, pack the live GameBoard run-state into the slot-0
     // GameSnapshot. called from Game::update's mid-run save-trigger gate
     // (dirty != 0 && state == 1 && !eventChoicePanel.visible). clears
-    // this->dirty on entry. covers the 7-int counter block at +0x20,
+    // this->dirty on entry. covers the 7-int counter block,
     // worldIndex/tutorialFlag/gridLayout/exitCol/exitRow/keysRequired/
     // levelTurnCount/pickupSnagThreshold, hintFlags region, variantsUsed
     // + animBannerSeedHistory clones, 5 rack tiles, reserveItems list,
@@ -314,7 +289,7 @@ public:
     // the returned pointer to read SnagContent fields like consumedFlag.
     SnagContent* findSnagInRack(int snagType);
 
-    // FUN_1000268c8, same idea but walks the page list at +0x1A8 instead.
+    // FUN_1000268c8, same idea but walks the page list instead.
     SnagContent* findSnagInPages(int snagType);
 
     // FUN_100026750, return the first snag of `snagType` in the rack, or
@@ -328,14 +303,14 @@ public:
     TileObject* rollRackTile(uint32_t flag);
 
     // FUN_100020254, roll a content type for a fresh rack tile from the
-    // per-level draw pool at +0x9E00, with type-specific filtering.
+    // per-level draw pool, with type-specific filtering.
     int rollSnagType();
 
     // FUN_100018a80, predicate that controls whether SnagContent stat
     // tints render for a given tile. true = draw tints, false = skip them.
     // logic: if the tile has no live snag, true. otherwise checks the
     // snag's type against specific kinds (99 / 75) and the parent tile's
-    // +0xF0 flag, plus a findSnagInRack(99) lookup.
+    // flag, plus a findSnagInRack(99) lookup.
     bool shouldDrawTintsFor(TileObject* tile);
 
     // ---- Step 9 update helpers (port of FUN_100018ac8 sub-routines).
@@ -345,7 +320,7 @@ public:
     // in its inline comment + the comment on its definition in the cpp.
 
     // showNextAchievementBanner, top-of-FUN_100018ac8 hook (before the
-    // `if (+0x54B8) return` early-out). when achievementBanner.resetTimer
+    // `if (dialogPanel.visible) return` early-out). when achievementBanner.resetTimer
     // < 0 (= idle), pops the next pending-unlock idx from AchievementTracker
     // and opens a banner for it via FUN_10004fd7c. with resetTimer = 0 (the
     // first frame), nothing pops yet.
@@ -354,12 +329,12 @@ public:
     // tickAmbientPickupHinting, port of FUN_10001980c. drives the
     // ambient "look at this thing" hint quad that points the player
     // toward an unread tile / panel / button. cascading priority over
-    // ~20 hint targets keyed off byte flags at +0x63F8..+0x6410.
+    // ~20 hint targets keyed off a run of hint-state byte flags.
     // with no flags set and no targets, mostly a no-op.
     void tickAmbientPickupHinting(float dt, float touchInput);
 
     // tickDetailPanelIdleDismiss, FUN_10001a690. when the detail panel's
-    // dismiss-watch byte at +0x440C is set, monitors timer / pointer-
+    // dismiss-watch byte is set, monitors timer / pointer-
     // distance to decide whether to auto-dismiss the panel. no-op while
     // that flag is clear.
     void tickDetailPanelIdleDismiss();
@@ -374,7 +349,8 @@ public:
     // scroll: when panInertiaActive is set, applies panVelocityX/panVelocityY
     // to positionX/positionY, decays it, and pixel-snaps when the velocity
     // drops below threshold. also runs a separate cosine-eased pan that drives
-    // positionX/Y between (+0x9A0/+0x9A4) and (+0x9A8/+0x9AC) per the +0x9B0 timer.
+    // positionX/Y between (panStartX, panStartY) and (panTargetX, panTargetY)
+    // per the panProgress timer.
     void tickInertialPanScroll(float dt);
 
     // animateCleanupQuadBob, FUN_10001ac04. for each entry in
@@ -384,7 +360,7 @@ public:
     void animateCleanupQuadBob(float dt);
 
     // tickDiscardingTilesAnimation, FUN_10001ad30. walks the discard-slide
-    // list at +0x96A0; advances each node's slide timer; expired nodes
+    // list; advances each node's slide timer; expired nodes
     // (timer >= 1) get unlinked + their TileObject deleted (= discard
     // complete). otherwise each node lerps its TileObject's screen pos
     // toward the target via FUN_100012c34. no-op on an empty list.
@@ -444,18 +420,18 @@ public:
     // it just landed next to).
     int countAdjacentPageTiles(TileObject* tile) const;
 
-    // FUN_100020c40, write `value` (absolute) to ATK at +0x83b4, refresh the
+    // FUN_100020c40, write `value` (absolute) to ATK, refresh the
     // HUD ATK ColorTint, push a delta-signed tween into the StatBars row,
     // and fire the audio-engine ATK-changed hook. no-op when the new value
     // matches the current (= debounce). callers that want a relative change
     // pass `currentATK + delta`.
     void setATK(int value);
 
-    // FUN_100020ce0, same shape as setATK but for DEF (+0x83b8 / DEF
+    // FUN_100020ce0, same shape as setATK but for DEF (the DEF field / DEF
     // ColorTint / DEF stat-bar slot).
     void setDEF(int value);
 
-    // FUN_100020d80, HP set at +0x83ac. clamps to [0, maxHP=+0x83b0],
+    // FUN_100020d80, HP set. clamps to [0, maxHP],
     // skips when level is already lost (`playerDowned`), refreshes
     // the HUD HP ColorTint, fires audio (sound 0x17 on heal, 0x18 on damage),
     // and on the death edge case (HP reaches 0) sets playerDowned + disables
@@ -467,7 +443,7 @@ public:
     // looks up snag-0x1e in rack: when absent, charge the matching event
     // slot directly via HUD::pushEventCharge. when present, try the
     // charge first (HUD::canPushEventCharge); on failure, queue the
-    // charge in the action queue at GameBoard+0x9670.
+    // charge in the action queue at GameBoard.actionQueue.
     void applyTileTypeEffect(int eventTypeKey);
 
     // FUN_100024cc8, post-commit HexMap dispatch. fires once a rack tile
@@ -531,12 +507,12 @@ public:
     // predicate function.
     int pickRandomRackSlotMatching(bool (*predicate)(TileObject*)) const;
 
-    // FUN_1000174c4, recompute scroll bounds (+0x9B4..+0x9C0) by walking
+    // FUN_1000174c4, recompute scroll bounds (scrollMinX..scrollMaxY) by walking
     // the page list and taking min/max of each tile's hex coord. clears
     // bounds to (0,0,0,0) when the page list is empty.
     void recomputeScrollBounds(float touchInputY);
 
-    // ---- action queue (GameBoard+0x9670) ----
+    // ---- action queue (GameBoard.actionQueue) ----
     // FUN_1000386b0, push or recycle a node onto the action queue. type 0
     // also seeds the 10 particle TileIcons + runs one zero-dt kick to set
     // their initial pose. originXY is a 2-float (x, y) source position;
@@ -563,7 +539,7 @@ public:
     // transition; the next push reuses the now-completed slots.
     void clearActionQueue();
 
-    // ---- stat-change tween queue (GameBoard+0x9650) ----
+    // ---- stat-change tween queue (GameBoard.statTween) ----
     // FUN_10002c00c, push or recycle a "+N" / "-N" floating digit display
     // for a stat change. textStyle picks the digit glyph table (0/1/2 =
     // ATK / DEF / HP). delta is the signed amount (sign drives green vs.
@@ -633,15 +609,15 @@ public:
     // true on "normal pickup OK"; returns false when blocked or when a
     // special tile-effect action gets pushed instead (caller plays sound
     // 0x12 = "disabled" on false). when commit=true and a special rule
-    // fires, the function pushes an action-queue entry to +0x9670.
+    // fires, the function pushes an entry onto the action queue.
     bool tryPickupRackTile(TileObject* tile, bool commit);
 
     // onPointerReleasedDuringDrag, FUN_10001b614. drives the rack-pickup
     // state machine on touch-down + touch-up: pick up a rack tile, snap it
     // back if released over itself, or directionally commit if released on
-    // a hex target. resets selectedRackSlot / draggedRackSlot / +0x96D0 /
-    // +0x9C60, the back/nav button alphas. with nothing in progress, most
-    // branches early-out.
+    // a hex target. resets selectedRackSlot / draggedRackSlot /
+    // gameplayItemsLiveCount / exitArrowVisible, the back/nav button alphas.
+    // with nothing in progress, most branches early-out.
     void onPointerReleasedDuringDrag();
 
     // openSnagDetailWithCombatSim, FUN_100023f84. starts the DetailPanel
@@ -814,7 +790,7 @@ public:
 
     // discardRackTile, FUN_10001dd14. helper used by state-5 / state-8
     // transitions: takes a rack slot's tile and starts its discard
-    // animation by pushing it onto the discard-slide list at +0x96A0
+    // animation by pushing it onto the discard-slide list
     // with start = current rack position and target = current tile
     // position. applies per-content-type extras (slot-0 darkness wipe,
     // type-0x11 split, type-2/3/6 stat-bonus chain). plays sound 0x14
@@ -867,7 +843,7 @@ public:
     // at 1.0.
     void updateNemesisAndCloseStrike(float dt, float touchInput);
 
-    // tickInGameStateMachine, the big switch on `state` (+0x18) at the
+    // tickInGameStateMachine, the big switch on `state` at the
     // bottom of FUN_100018ac8. cases 1..10 + default. starts in case 1;
     // all other cases get walked when input lands.
     void tickInGameStateMachine(float dt, float touchInput);
@@ -875,88 +851,76 @@ public:
     // --- struct fields, laid out to match the binary ---
 
     // core state
-    bool visible;           // 0x00
-    // semantic note: the bytes at +0x01 / +0x02 are exclusive termination
-    // signals from PauseMenu's two paths.
-    //   +0x01 scoreRequested = "show me my score" (Forfeit confirmation):
+    bool visible;
+    // semantic note: the scoreRequested / exitRequested bytes are exclusive
+    // termination signals from PauseMenu's two paths.
+    // scoreRequested = "show me my score" (Forfeit confirmation):
     //         Game::update opens ScorePanel for the dead-run summary.
-    //   +0x02 exitRequested  = "just exit, no score" (Main Menu tap):
+    // exitRequested  = "just exit, no score" (Main Menu tap):
     //         Game::update fires the case-5 overlay transition straight
     //         back to TitleMenu, skipping ScorePanel entirely.
-    // these match the binary's gb+1 / gb+2 reads at FUN_100045410's
-    // post-update branch cascade (the !0x01 -> !0x02 -> normal-play chain).
-    bool scoreRequested;    // 0x01  (Forfeit -> ScorePanel)
-    bool exitRequested;     // 0x02  (Main Menu -> TitleMenu, no score)
-    bool dirty;             // 0x03
-    bool saveNewSettings;  // 0x04
-    uint8_t pad05[3];       // 0x05-0x07
-    uint32_t worldIndex;    // 0x08 (set by initLevel from FUN_1000161fc param_3)
+    // these match the binary's scoreRequested / exitRequested reads at
+    // FUN_100045410's post-update branch cascade (the scoreRequested ->
+    // exitRequested -> normal-play chain).
+    bool scoreRequested;    // (Forfeit -> ScorePanel)
+    bool exitRequested;     // (Main Menu -> TitleMenu, no score)
+    bool dirty;
+    bool saveNewSettings;
+    uint32_t worldIndex;    // (set by initLevel from FUN_1000161fc param_3)
     // tutorialFlag, toggled by PauseMenu's Tutorial tab (XOR'd in
     // PauseMenu::update release path; copied back here in the consumer
     // chain). when this changes, GameBoard wipes the hint-state region at
-    // +0x63F8 so tutorial hints re-fire for the new mode.
-    char tutorialFlag;      // 0x0C
-    uint8_t pad0D[3];       // 0x0D-0x0F
+    // so tutorial hints re-fire for the new mode.
+    char tutorialFlag;
     // SE / BGM volume settings driven by PauseMenu's two volume sliders.
     // initialized to 0.5 (= centered slider). Game::dispatchSounds reads
     // seVolume as the per-frame SE gain context (FUN_100035cfc); Game's
     // music dispatch reads bgmVolume each frame as the target music vol
     // (FUN_100045410 -> FUN_100008800 = MusicController::setTargetVolume).
-    float seVolume;         // 0x10 (initially 0.5)
-    float bgmVolume;        // 0x14 (initially 0.5)
-    int state;              // 0x18 (game state machine, initially 1)
-    bool snagActivationSuppressed;            // 0x1C
-    bool flag1D;            // 0x1D
-    bool combatEffectsSuppressed;            // 0x1E
-    uint8_t pad1F;          // 0x1F
+    float seVolume;         // (initially 0.5)
+    float bgmVolume;        // (initially 0.5)
+    int state;              // (game state tracker, initially 1)
+    bool snagActivationSuppressed;
+    bool snagMarchPending;            // gates marchPageSnags() in turn-resolve state 3; armed after a committed turn
+    bool combatEffectsSuppressed;
     // run-wide turn counter. ++ in state-8 tile-resolution. resets only in
     // initLevel (= new run), not per-level despite the historical name; the
-    // score panel reads gb+0x20 as "Turns Taken" (run-wide). also drives the
+    // score panel reads GameBoard.totalTurnCount as "Turns Taken" (run-wide). also drives the
     // exp2(totalTurnCount/N) snag stat scaling in SnagContent::computeBaseStat
     // (more turns taken = exponentially harder fresh-spawned snags).
-    int totalTurnCount;     // 0x20
-    int worldLevelIndex;    // 0x24
-    // gb+0x28..+0x2C: snag-kill counters surfaced as score-panel rows 2 + 3
+    int totalTurnCount;
+    int worldLevelIndex;
+    // snagsDefeated / specialSnagsDefeated: snag-kill counters surfaced as score-panel rows 2 + 3
     // ("Snags Defeated" and "Special Snags Defeated"). zeroed in initLevel;
     // incremented inside resolveSnagCombat's XP-gain branch.
-    int snagsDefeated;        // 0x28  ("Snags Defeated" score-panel row)
-    int specialSnagsDefeated; // 0x2C  ("Special Snags Defeated")
+    int snagsDefeated;        // ("Snags Defeated" score-panel row)
+    int specialSnagsDefeated; // ("Special Snags Defeated")
     // levels-gained counter. ++ after the player commits a level-up panel
     // pick (game_board.cpp:12003). historically named "snagsDefeated"; the
-    // score panel reads gb+0x30 as "Levels Gained".
-    int levelsGained;       // 0x30
+    // score panel reads GameBoard.levelsGained as "Levels Gained".
+    int levelsGained;
     // items-found counter. ++ after the player commits an item-choice panel
     // pick (game_board.cpp:11943). historically named "turnsTaken"; the
-    // score panel reads gb+0x34 as "Items Found".
-    int itemsFound;         // 0x34
-    int eventsFired;        // 0x38  (++ per consumed Event in fireEvent)
-    // 0x3C: per-level state byte (zeroed in initLevelContent, checked in
-    // state-8 to split the resolution path; levelTurnCount only increments
-    // when this is 0). not the difficulty selector, that's worldIndex
-    // (+0x8). TODO: identify exact semantics. likely a "level-end / victory
-    // pending" flag.
-    char exitReached;           // 0x3C
-    uint8_t pad3D[3];       // 0x3D-0x3F
+    // score panel reads GameBoard.itemsFound as "Items Found".
+    int itemsFound;
+    int eventsFired;        // (++ per consumed Event in fireEvent)
+    // per-level byte that's activated when a tile is placed on the exit token.
+    char exitReached;
     // count of bonus / "pickup" tiles the player has collected. drives the
     // snag-spawn threshold below.
-    int levelTurnCount;          // 0x40
+    int levelTurnCount;
     // next levelTurnCount value at which the rack roll switches to producing
     // snag tiles instead of bonus content. seeded by seedPickupSnagThreshold.
-    int pickupSnagThreshold;   // 0x44
+    int pickupSnagThreshold;
 
-    Quad titleQuad;         // 0x48..0x11F (0xD8; owns anim rect at +0x110)
+    Quad titleQuad;         // (0xD8; owns its trailing anim rect)
                             // UV: (0.0, 0.843) to (0.625, 1.0), size 1.0 x 0.25
-                            // titleQuad.posX = binary offset 0xF0 (0x48 + 0xA8)
-                            // titleQuad.posY = binary offset 0xF4 (0x48 + 0xAC)
-                            // titleQuad.width = binary offset 0xF8 (0x48 + 0xB0)
-                            // titleQuad.height = binary offset 0xFC (0x48 + 0xB4)
 
     // per-level cosmetic variant (0..0xB, 12 values) picked at level start by
     // FUN_1000165e8 / FUN_100016b18. determines which of 12 hex sprite sheets
     // the board renders this level. orthogonal to gridIdx (the 24-per-variant
     // directionality index) which is rolled per-tile.
-    int gridLayout;             // 0x120
-    uint8_t pad124[4];          // 0x124-0x127
+    int gridLayout;
 
     // anti-repeat variant rotation. each level rolls one variant from
     // variantsRemaining (RNG stream 0), erases it from the set, and appends
@@ -968,51 +932,51 @@ public:
     // matches binary's FUN_1000283bc (vec push-with-grow), FUN_100028d5c
     // (set::insert), FUN_100026db0 (idx-th roll + erase), FUN_100028aa8
     // (set::erase by value, used by FUN_100016b18 level transition).
-    std::vector<int> variantsUsed;       // 0x128
-    std::set<int>    variantsRemaining;  // 0x140
+    std::vector<int> variantsUsed;
+    std::set<int>    variantsRemaining;
 
     // the player's 5-tile hand. populateRack pops from the reserve queue at
-    // +0x96D8 to fill slot 0; existing tiles slide up one index per pop.
-    TileObject* rack[RACK_SLOT_COUNT];  // 0x158..0x17F  (5 x 8-byte pointers)
+    // to fill slot 0; existing tiles slide up one index per pop.
+    TileObject* rack[RACK_SLOT_COUNT];  // (5 x 8-byte pointers)
 
     // doubly-linked rack-render-order list. each entry is a slot index
     // (0..4); GameBoard::draw walks this list to draw rack tiles in the
     // correct stacking order, dereferencing rack[slot] per visit.
     // libc++ aarch64 std::list head { sentinel.prev (8), sentinel.next (8),
     // size (8) } = 24 bytes; matches the binary's (Prev, Next, Count) trio
-    // at +0x180/+0x188/+0x190 exactly. push-back = "draw this slot last"
+    // exactly. push-back = "draw this slot last"
     // (= on top of the stacking order).
-    std::list<int> rackOrder;       // 0x180..0x197
+    std::list<int> rackOrder;
 
     // rack slot index of the tile the player is currently dragging from the
     // rack (mid-drag, pre-commit). set by FUN_100023ac4 when pickup commits;
     // copied into selectedRackSlot when the user drops on a hex (entering
     // rotation/confirm phase); cleared back to -1 when the gesture ends.
-    int draggedRackSlot;        // 0x198  (init -1)
+    int draggedRackSlot;        // (init -1)
 
     // index of the currently-grabbed rack slot during a tile-place gesture.
     // -1 = no active grab (the default). gameplay sets this when the player
     // touches a rack tile; GameBoard::draw treats it as "draw this tile last
     // so it appears on top of the others". Phase C wires the input.
-    int selectedRackSlot;       // 0x19C  (init -1)
+    int selectedRackSlot;       // (init -1)
 
     // drag offset captured at pickup (FUN_100023ac4 writes both): the touch's
     // offset from the held tile's center at the moment pickup committed. used
     // to position the tile under the finger as it moves. cleared on release.
-    float dragOffsetX;          // 0x1A0
-    float dragOffsetY;          // 0x1A4
+    float dragOffsetX;
+    float dragOffsetY;
 
     // doubly-linked list of placed tiles on the hex grid. push_back = "newest
     // placed tile is now the back of the list"; front() = "oldest placed tile
     // (= first one to fall off if Nemesis catches up)".
     // libc++ aarch64 std::list head matches the binary's (sentinel.prev,
-    // sentinel.next, size) trio at +0x1A8/+0x1B0/+0x1B8.
-    std::list<TileObject*> pageList;   // 0x1A8..0x1BF
+    // sentinel.next, size) trio.
+    std::list<TileObject*> pageList;
     // rotation / nav-drag state used by updateNavArrowAndConfirmDrag
     // (FUN_10001c450). -1 = idle, 0 = nav-arrow drag (pick adjacent
     // direction), 1 = back-button rotation drag. drives both the
     // GameBoard::draw nav-arrow gate and the rotation commit logic.
-    int navDragState;           // 0x1C0  (init -1)
+    int navDragState;           // (init -1)
 
     // back-button rotation drag state. all three fields are seeded on the
     // touch-down that lands on the back button (navDragState becomes 1),
@@ -1022,23 +986,22 @@ public:
     // dirList". reset to 0 on touch-up (navDragAnchorRotation /
     // navDragAnchorAngle stay at their last value but are unused while
     // navDragState == -1).
-    float navDragAnchorRotation;  // 0x1C4  tile.rotation in degrees at touch-down
-    float navDragAnchorAngle;     // 0x1C8  atan2(touch - tile center) at touch-down, radians
-    float navDragDuration;        // 0x1CC  seconds accumulated during touch-move
+    float navDragAnchorRotation;  // tile.rotation in degrees at touch-down
+    float navDragAnchorAngle;     // atan2(touch - tile center) at touch-down, radians
+    float navDragDuration;        // seconds accumulated during touch-move
 
-    // 6 tab buttons, each a TileIcon (Quad + 0x10 extra = 0xD8).
-    // confirmed from FUN_100014ed8 init loop: stride 0xD8 from +0x1D0 to +0x6E0.
+    // 6 tab buttons, each a TileIcon (a Quad plus 0x10 extra bytes, 0xD8 total).
+    // confirmed from FUN_100014ed8 init loop: stride 0xD8 across the 6 entries.
     // UV: (0.032, 0.0) to (0.275, 0.134), size 0.234 x 0.253
-    TileIcon tileCursorQuads[MAX_CURSOR_COUNT]; // 0x1D0..+0x6DF
+    TileIcon tileCursorQuads[MAX_CURSOR_COUNT];
 
-    bool tileCursorVisible[MAX_CURSOR_COUNT]; // 0x6E0
-    bool tileCursorState[MAX_CURSOR_COUNT];   // 0x6E6
-    uint8_t pad6EC[4];               // 0x6EC-0x6EF
+    bool tileCursorVisible[MAX_CURSOR_COUNT];
+    bool tileCursorState[MAX_CURSOR_COUNT];
 
     // these three are all TileIcons (0xD8) per the binary, not bare Quads.
     // gaps between offsets confirmed: 0x7C8 - 0x6F0 = 0xD8, 0x8A0 - 0x7C8 = 0xD8.
-    TileIcon navArrowQuad;   // 0x6F0 (UV: 0.083,0.0 to 0.181,0.098, size 0.156x0.156)
-    TileIcon backButtonQuad; // 0x7C8 (UV: 0.0,0.0 to 0.082,0.193, size 0.131x0.309)
+    TileIcon navArrowQuad;   // (UV: 0.083,0.0 to 0.181,0.098, size 0.156x0.156)
+    TileIcon backButtonQuad; // (UV: 0.0,0.0 to 0.082,0.193, size 0.131x0.309)
     // the "X" / dead-end escape button. tryShowXButton (FUN_100017c04)
     // scans the 6 directions from the newest committed tile for a hex that
     // is reachable and has all 6 of its own neighbors blocked, i.e.
@@ -1048,40 +1011,38 @@ public:
     // tap handler tryConsumeXButton bumps nemesis.eatTarget = max(pageCount
     // - 1, eatTarget), letting Nemesis catch up to one tile behind the
     // player so play can continue past the bottleneck.
-    TileIcon xButtonQuad;  // 0x8A0 (UV: 0.904,0.533 to 1.0,0.629, size 0.153x0.153)
+    TileIcon xButtonQuad;  // (UV: 0.904,0.533 to 1.0,0.629, size 0.153x0.153)
 
-    bool xButtonVisible;   // 0x978  (set by tryShowXButton)
-    bool xButtonPressed;   // 0x979  (set by tryConsumeXButton on touch-down)
-    uint8_t pad97A[2];     // 0x97A-0x97B
-    float positionX;      // 0x97C (draw translate X)
-    float positionY;      // 0x980 (draw translate Y)
+    bool xButtonVisible;   // (set by tryShowXButton)
+    bool xButtonPressed;   // (set by tryConsumeXButton on touch-down)
+    float positionX;       // (draw translate X)
+    float positionY;       // (draw translate Y)
 
     // board drag + inertial-pan-scroll tracking. seeded while the user drags
     // the board (FUN_10001bd2c) and consumed by the inertial fling
     // (FUN_10001aa84) after the finger lifts.
-    float   panAnchorX;       // 0x984  (positionX - touchX, captured at drag-begin)
-    float   panAnchorY;       // 0x988
-    float   panVelocityX;     // 0x98C  (smoothed fling-velocity pair)
-    float   panVelocityY;     // 0x990
-    float   panPrevTouchX;    // 0x994  (prev-frame touch, for the velocity delta)
-    float   panPrevTouchY;    // 0x998
-    bool    panDragActive;    // 0x99C  (finger down, dragging the board)
-    bool    panInertiaActive; // 0x99D  (post-release inertial fling running)
-    uint8_t pad99E[2];        // 0x99E..0x99F
+    float   panAnchorX;       // (positionX - touchX, captured at drag-begin)
+    float   panAnchorY;
+    float   panVelocityX;     // (smoothed fling-velocity pair)
+    float   panVelocityY;
+    float   panPrevTouchX;    // (prev-frame touch, for the velocity delta)
+    float   panPrevTouchY;
+    bool    panDragActive;    // (finger down, dragging the board)
+    bool    panInertiaActive; // (post-release inertial fling running)
 
-    // 0x9A0..0x9B3: pan-animation slots. writes by FUN_10001dca0 (camera
+    // pan-animation slots. writes by FUN_10001dca0 (camera
     // pan after Nemesis spawn / step / commit). pan source = current
     // (positionX, positionY) snapshot; target = pixel-snapped destination
     // in normalized board space; progress = 0..1 timer (init 1.0 = idle).
-    float panStartX;          // 0x9A0
-    float panStartY;          // 0x9A4
-    float panTargetX;         // 0x9A8
-    float panTargetY;         // 0x9AC
-    float panProgress;        // 0x9B0
-    float scrollMinX;         // 0x9B4
-    float scrollMinY;     // 0x9B8
-    float scrollMaxX;     // 0x9BC
-    float scrollMaxY;     // 0x9C0
+    float panStartX;
+    float panStartY;
+    float panTargetX;
+    float panTargetY;
+    float panProgress;
+    float scrollMinX;
+    float scrollMinY;
+    float scrollMaxX;
+    float scrollMaxY;
     // tile-alpha ramp during drag mode. tileAlphaProgress is driven by
     // animateMidGrabHexHighlight (0->1 while held, 1->0 on release); each
     // frame syncGlobalTileAlpha lerps an alpha byte (200 idle -> 40 full
@@ -1089,63 +1050,59 @@ public:
     // avatar so the held tile reads clearly against the dimmed board.
     // tileAlphaMirror caches the prior frame's value to skip redundant
     // dispatches.
-    float   tileAlphaMirror;    // 0x9C4
-    float   tileAlphaProgress;  // 0x9C8
-    uint8_t pad9CC[4];          // 0x9CC..0x9CF
+    float   tileAlphaMirror;
+    float   tileAlphaProgress;
 
     // Nemesis enemy: 25-segment body + XP dot ring + level number tint.
     // an instant-kill antagonist that follows the player and consumes their path.
-    NemesisRenderable nemesis;  // 0x9D0 (0x3A30 bytes, ends at 0x4400)
+    NemesisRenderable nemesis;  // (0x3A30 bytes, ends at 0x4400)
 
     // per-eat animation duration (log-scaled by step count). set in
     // nemesisScheduleNextStep, consumed by the visual advance in
     // nemesisStepForward.
-    float   eatStepDuration;     // 0x4400
-    uint8_t pad4404[4];          // 0x4404..0x4407
+    float   eatStepDuration;
 
     // multi-mode info card. 6 display modes, fade animation, 3 text lines.
-    DetailPanel detailPanel;    // 0x4408 (0x10B0 bytes, ends at 0x54B8)
+    DetailPanel detailPanel;    // (0x10B0 bytes, ends at 0x54B8)
 
     // modal confirm dialog with backdrop dim and 4 button-pair configurations.
     // strongly suspected to be the tutorial system.
-    DialogPanel dialogPanel;    // 0x54B8 (0xF60 bytes, ends at 0x6418)
+    DialogPanel dialogPanel;    // (0xF60 bytes, ends at 0x6418)
 
     // gameplay HUD: status bar, stat bars, button frames, icons, marker rings,
-    // 3 ColorTints, overlay quads. lives at +0x6418.
-    GameplayHUD hud;  // 0x6418 (0x1E58 bytes, ends at 0x8270)
+    // 3 ColorTints, overlay quads.
+    GameplayHUD hud;  // (0x1E58 bytes, ends at 0x8270)
 
     // player entity: character token Quad, stats, 3 starter Item slots,
     // dynamic Item vector, movement queue. fully ported: Items, Special
     // Abilities, Perks, level-up, and movement all live here.
-    PlayerSystem playerSystem;     // 0x8270 (0x1A8 bytes, ends at 0x8418)
+    PlayerSystem playerSystem;     // (0x1A8 bytes, ends at 0x8418)
 
-    // 0x8418: per-frame "level-progression pending" flag. update case 8 reads
+    // per-frame "level-progression pending" flag. update case 8 reads
     // this to gate world-advance vs level-advance branching, then clears it.
-    bool    playerDowned;   // 0x8418
-    uint8_t pad8419[7];              // 0x8419..0x841F (alignment to next 8B)
+    bool    playerDowned;
 
     // bottom-of-screen stat-bar segment row (20 Quads + per-slot anim state).
     // ctor FUN_10003bc20, draw FUN_10003be88, update FUN_10003beec.
-    StatBars statBars;               // 0x8420 (0x1230 bytes, ends at 0x9650)
+    StatBars statBars;               // (0x1230 bytes, ends at 0x9650)
 
     // stat-change tween queue (see TweenBody above): pending floating
     // "+N" / "-N" digit displays that pop up when a stat changes. push_back
     // adds the newest tween; iteration is oldest->newest. anyAnim gates the
     // tick / draw walks entirely (no walk fires when no slot is active).
-    std::list<TweenBody> statTween;    // 0x9650..0x9667
-    bool                 statTweenAnyAnim;  // 0x9668  any slot animating this frame
-    uint8_t              pad9669[7];        // 0x9669..0x966F (alignment to 8B)
+    std::list<TweenBody> statTween;
+    bool                 statTweenAnyAnim;  // any slot animating this frame
 
     // action queue (see ActionBody above): pending per-tile cosmetic /
     // side-effect entries. completed slots (animT >= 1.0) get recycled by
     // the push helper or torn down by the tail iterator.
-    std::list<ActionBody> actionQueue;   // 0x9670..0x9687
+    std::list<ActionBody> actionQueue;
 
     // anti-streak weighted-roll table for fresh rack-tile content types.
     // 5 entries are installed in GameBoard::create() (mirroring the binary's
     // ctor pushes). consumed by rollRackTile's fresh-roll branch via
     // weightedRollTileType(tileWeightPool, 4).
-    TileWeightPool tileWeightPool;  // 0x9688
+    TileWeightPool tileWeightPool;
 
     // discard-slide list (see DiscardSlideBody above): tiles being animated
     // off the rack during discard. each entry's timer advances at dt/0.3
@@ -1153,20 +1110,20 @@ public:
     // deleted and the entry erased.
     // previously misnamed "decoration list"; confirmed via sound 0x14
     // ("discard") triggered by discardRackTile (FUN_10001dd14).
-    std::list<DiscardSlideBody> discardSlide;   // 0x96A0..0x96B7
+    std::list<DiscardSlideBody> discardSlide;
 
     // dynamic gameplay items: vector of TileIcons drawn during the
     // FUN_100018514 step that fires before the page-list head tile. binary
     // tracks an explicit live count (= visible items, may be < vector
-    // capacity) at +0x96D0, separate from the std::vector's own size.
-    std::vector<TileIcon> gameplayItems;     // 0x96B8 (24 bytes, std::vector head)
-    int64_t               gameplayItemsLiveCount;  // 0x96D0
+    // capacity), separate from the std::vector's own size.
+    std::vector<TileIcon> gameplayItems;     // (24 bytes, std::vector head)
+    int64_t               gameplayItemsLiveCount;
 
     // tile reserve queue: std::list of TileReserveEntry. populateRack pops
     // one entry per call from the front (= oldest) to fill a rack slot. if
     // the queue is empty when populateRack runs, the pop helper
     // (FUN_10001ffd4) falls through to RNG-rolling a brand-new tile from
-    // the per-level tile draw pool at +0x9E00.
+    // the per-level tile draw pool.
     //
     // who pre-populates the queue depends on the entry path:
     //   - fresh level 1 (FUN_1000161fc -> FUN_1000165e8): pushes 9
@@ -1177,22 +1134,22 @@ public:
     //     RNG-rolled tiles for every slot.
     //   - loading a saved game (FUN_100016b18, the new-game / continue
     //     path triggered by the title menu, not the in-engine level
-    //     advance): the snapshot's starter-encounter vector at +0x1F0
+    //     advance): the snapshot's starter-encounter vector
     //     supplies the queue contents.
-    std::list<TileReserveEntry> tileReserve;   // 0x96D8..0x96EF
+    std::list<TileReserveEntry> tileReserve;
 
     // hex grid map: std::map<(tileVariant, gridIdx), Cell> tracking the cells
     // the character has visited / can see. drawn by GameBoard::draw. cells
     // populated by the layout pass (FUN_1000175f0) at level start and as
     // the character moves through Phase C input.
-    HexMap hexMap;                   // 0x96F0 (0x18 bytes, std::map head)
+    HexMap hexMap;                   // (0x18 bytes, std::map head)
 
     // hex grid coordinates of the level-exit cell: the locked hex the
     // player must reach to advance to the next level. set once per level
     // by the layout pass (FUN_1000175f0, rolls a jitter origin within +/-
     // range). the exit's 6 hex neighbors are the "key" cells; placing a
-    // page tile on each key adjacent to the exit increments keysCollected
-    // (+0x9B4C). when keysCollected >= keysRequired (+0x9B48), the player
+    // page tile on each key adjacent to the exit increments keysCollected.
+    // when keysCollected >= keysRequired, the player
     // can place a tile that connects to the exit; before then, the rules
     // engine paints those placements red.
     //
@@ -1202,8 +1159,8 @@ public:
     // the character's instantaneous position. TODO: rename to
     // exitGridCol/exitGridRow once the avatar-walk port confirms it
     // doesn't update this slot.
-    int32_t exitCol;             // 0x9708 (semantic: exit/level-end col)
-    int32_t exitRow;             // 0x970C (semantic: exit/level-end row)
+    int32_t exitCol;             // (semantic: exit/level-end col)
+    int32_t exitRow;             // (semantic: exit/level-end row)
 
     // visible Exit tile. the HexMap cell at (exitCol, exitRow) is added
     // with kind=1 but explicitly uses zero UV (invisible); the player
@@ -1212,207 +1169,110 @@ public:
     // gate opens (FUN_1000178fc also fires sound 0x3F on the transition).
     // positioned with X = hexCellLinearX(exitCol, exitRow) + 0.0015625,
     // Y = (param_2 from caller) + (-0.01875), pixel-snapped.
-    TileIcon exitTileIcon;           // 0x9710 (0xD8 bytes)
+    TileIcon exitTileIcon;           // (0xD8 bytes)
 
     // lock icons stacked on the Exit tile (1..4 per level, sized by
     // FUN_100017794). each one shows "key still required"; FUN_1000178fc
     // flips the first `keysCollected` icons to the filled UV.
-    TileIcon exitLockIcons[4];       // 0x97E8 (4 * 0xD8 = 0x360 bytes)
+    TileIcon exitLockIcons[4];       // (4 * 0xD8 = 0x360 bytes)
 
     // number of key cells (= path tiles adjacent to the exit hex)
     // required to unlock the exit. set per-level by FUN_100017794:
     // `keysRequired = clamp(worldLevelIndex + 1, 0, 4)`. the rules
     // engine forbids placing a tile that connects directly to the exit
     // until keysCollected >= keysRequired.
-    int32_t keysRequired;            // 0x9B48
+    int32_t keysRequired;
 
     // running tally of key cells collected: number of page-list tiles
     // currently at hex distance 1 from the exit. recomputed by
     // FUN_1000178fc each time the page list changes (post-tile-commit
     // recompute).
-    int32_t keysCollected;           // 0x9B4C
+    int32_t keysCollected;
 
     // exit-arrow visualization. drawn when the player is more than 3 hex
     // cells from the exit, near screen center, slightly offset toward the
     // exit. rotation points toward the exit; the digit ColorTint shows the
     // hex distance. configured by updateExitArrowVisualState (port of
     // FUN_10002493c) on every rack tile pickup.
-    Quad      exitArrowQuad;         // 0x9B50..0x9C27 (0xD8; owns anim rect at +0x9C18)
+    Quad      exitArrowQuad;         // (0xD8; owns its trailing anim rect)
 
     // digit display for the hex distance. positioned at exitArrowQuad.posXY.
-    ColorTint exitArrowDigit;        // 0x9C28
+    ColorTint exitArrowDigit;
 
     // FUN_10002493c sets this to 1 when the arrow becomes visible; cleared
     // to 0 by initLevelContent. on its own does not gate the draw; that's
     // exitArrowFade's job.
-    bool      exitArrowVisible;      // 0x9C60
-    uint8_t   pad9C61[3];
+    bool      exitArrowVisible;
 
     // fade-in / fade-out progress for the arrow. drawn only while > 0.
     // also zeroed by initLevelContent. ramped per frame by tickExitArrowFade
     // (FUN_10001a5a0): toward 1 while exitArrowVisible, back to 0 once cleared.
-    float     exitArrowFade;         // 0x9C64
+    float     exitArrowFade;
 
     // full-screen dim Quad. drawn (on no texture) when dimProgress > 0;
     // its alpha is ramped by case-10 of the state machine via a cosine
-    // ease tied to the +0x9D40 progress timer.
-    Quad dimQuad;                    // 0x9C68..0x9D3F (0xD8; owns anim rect at +0x9D30)
+    // ease tied to the dimProgress timer.
+    Quad dimQuad;                    // (0xD8; owns its trailing anim rect)
 
     // case-10 fade timer. 0.0 = no dim, 1.0 = fully dimmed. on level exit
     // it ramps 0 -> 1, then initLevelContent runs, then ramps 1 -> 0 to
-    // reveal the new level. only +0x9D40 has an observed read site so far;
-    // +0x9D44 stays raw until a consumer needs it.
-    float    dimProgress;            // 0x9D40
-    uint8_t  pad9D44[4];
+    // reveal the new level. only dimProgress has an observed read site so far;
+    // stays raw until a consumer needs it.
+    float    dimProgress;
 
-    // transient overlay text animation ("ENCOUNTER!" / "LEVEL UP" banners).
-    AnimationController animController;  // 0x9D48 (0x88 bytes)
+    // transient overlay text animation (dream text shown on new level start).
+    AnimationController animController;
 
     // animation-banner "draw without replacement" bookkeeping. on each
     // level transition (FUN_1000165e8 tail, skipped on level 1) one index
     // is popped from the pool and pushed onto the history; when the pool
     // empties, history clears and the pool refills 1..animTableSize-1.
-    std::vector<int64_t> animBannerSeedHistory; // 0x9DD0 (0x18)
-    std::set<int64_t>    animBannerSeedPool;    // 0x9DE8 (0x18)
+    std::vector<int64_t> animBannerSeedHistory;
+    std::set<int64_t>    animBannerSeedPool;
 
     // snag-type exclusion filter consumed by rollSnagType. populated at
-    // startNewRun (FUN_1000161fc tail) by copy-from-source; empty in our
-    // current flow so every type is eligible.
-    std::set<int> excludedSnagTypes;  // 0x9E00 (0x18, libc++ tree head)
+    // startNewRun (FUN_1000161fc tail) by copy-from-source
+    // TODO is this even used properly?
+    std::set<int> excludedSnagTypes;
 
     // achievement-unlock banner popup. ctor FUN_10004efec, reset
     // FUN_10004f3ac, update FUN_10004f490, open FUN_10004fd7c.
-    // mis-named "PerkDisplay" through F0..F7; fixed in F7.6-H2.
-    AchievementBanner achievementBanner; // 0x9E18 (exactly 0x5E0, ends at 0xA3F8)
+    AchievementBanner achievementBanner;
 
-    // 0xA3F8..0xB2A8: user-stats overlay (the "your character" read-only
-    // panel opened by tapping the top-left HUD player-icon button).
-    // ctor FUN_100009a00, open FUN_10000a9f4, update FUN_10000a594,
-    // draw FUN_10000a3dc. publishedState == 1 from HUD's queryReleaseTouch
-    // routes to userStatsPanel.open(playerSystem, &worldIndex).
-    UserStatsPanel userStatsPanel;       // 0xA3F8 (0xEB0 bytes, ends at 0xB2A8)
+    // user-stats overlay (the read-only panel opened by tapping the
+    // top-left HUD player-icon button). ctor FUN_100009a00, open FUN_10000a9f4,
+    // update FUN_10000a594, draw FUN_10000a3dc. publishedState == 1 frpm
+    // HUD's queryReleaseTouch routes to userStatsPanel.open(playerSystem, &worldIndex).
+    UserStatsPanel userStatsPanel;
 
     // event-choice panel (FUN_10000e128 ctor + e6d4 draw + e834 update).
     // presents 1..4 candidate Events for the player to pick. on confirm,
     // onConfirmTapped writes the source EventSlot* into
     // selectedEventOnConfirm; gameBoardUpdate clones it and installs via
     // hud.addEventSlot.
-    EventChoicePanel eventChoicePanel;   // 0xB2A8 (0x1510 bytes, ends at 0xC7B8)
+    EventChoicePanel eventChoicePanel;
 
-    // level-up panel (FUN_10002d278 opener). triggered when HUD+0x1BC0
-    // (= GameBoard+0x7FD8) is set by the HUD's XP marker bank filling
-    // 10 markers (one level per cycle). gameBoardUpdate sees +0x7FD8 set,
+    // level-up panel (FUN_10002d278 opener). triggered when the HUD's
+    // XP level-up trigger byte is set by the XP marker bank filling
+    // 10 markers (one level per cycle). gameBoardUpdate sees that byte set,
     // clears it, and calls levelUpPanel.open(playerSystem); commit drains
     // via getNextStatPick / getNextPerkPick.
-    LevelUpPanel levelUpPanel;           // 0xC7B8 (0x1738 bytes, ends at 0xDEF0)
+    LevelUpPanel levelUpPanel;
 
-    // item-choice panel (FUN_100034d60 opener). triggered when HUD+0x1BC1
-    // (= GameBoard+0x7FD9) is set by the HUD's CTRL marker bank filling.
+    // item-choice panel (FUN_100034d60 opener). triggered when the HUD's
+    // CTRL item-choice trigger byte is set by the CTRL marker bank filling.
     // gameBoardUpdate clears the trigger byte and calls
     // itemChoicePanel.open(&playerSystem); commit installs the selected
     // candidate Item into playerSystem.baseItems[type].
-    ItemChoicePanel itemChoicePanel;     // 0xDEF0 (0x1598 bytes, ends at 0xF488)
+    ItemChoicePanel itemChoicePanel;
 
-    // in-game pause menu at +0xF488 (0x1990 bytes). a Menu-derived popup
+    // in-game pause menu (0x1990 bytes). a Menu-derived popup
     // with 3 tabs, 2 info rows, 2 standalone icon Quads, an embedded
-    // ForfeitConfirmPanel at PauseMenu+0xEA0 (= GameBoard+0x10328), and a
-    // trailing std::vector at +0x10E00. ctor at FUN_10002e838; opened by
+    // ForfeitConfirmPanel, and a trailing std::vector. ctor at
+    // FUN_10002e838; opened by
     // FUN_10001ae10's case-2 branch when the HUD's menu icon is tapped.
     //
     // not the post-run score panel; that lives heap-allocated at
-    // Game+0x19128. see pause_menu.h for full layout.
-    PauseMenu pauseMenu;                 // +0xF488..+0x10E18 (0x1990 bytes)
+    // Game.scorePanel_. see pause_menu.h for full layout.
+    PauseMenu pauseMenu;
 };
-
-// verify struct layout at compile time
-static_assert(offsetof(GameBoard, gridLayout)        == 0x120,
-              "tileVariant (per-level cosmetic variant) must be at +0x120");
-static_assert(offsetof(GameBoard, variantsUsed)      == 0x128,
-              "variantsUsed (std::vector<int>) must be at +0x128");
-static_assert(offsetof(GameBoard, variantsRemaining) == 0x140,
-              "variantsRemaining (std::set<int>) must be at +0x140");
-static_assert(offsetof(GameBoard, rack)              == 0x158,
-              "rack[5] must be embedded at +0x158");
-static_assert(offsetof(GameBoard, rackOrder)         == 0x180,
-              "rack-order list head must be at +0x180");
-static_assert(offsetof(GameBoard, selectedRackSlot)  == 0x19C,
-              "selectedRackSlot must be at +0x19C");
-static_assert(offsetof(GameBoard, pageList)          == 0x1A8,
-              "page list head must be at +0x1A8");
-static_assert(offsetof(GameBoard, navDragAnchorRotation) == 0x1C4,
-              "navDragAnchorRotation must be at +0x1C4");
-static_assert(offsetof(GameBoard, navDragAnchorAngle)    == 0x1C8,
-              "navDragAnchorAngle must be at +0x1C8");
-static_assert(offsetof(GameBoard, navDragDuration)       == 0x1CC,
-              "navDragDuration must be at +0x1CC");
-static_assert(offsetof(GameBoard, nemesis)           == 0x9D0,
-              "NemesisRenderable must be embedded at +0x9D0");
-static_assert(offsetof(GameBoard, eatStepDuration)   == 0x4400,
-              "eatStepDuration must be at +0x4400");
-static_assert(offsetof(GameBoard, hud)               == 0x6418,
-              "GameplayHUD must be embedded at +0x6418");
-static_assert(offsetof(GameBoard, playerSystem)     == 0x8270,
-              "PlayerSystem must be embedded at +0x8270");
-static_assert(offsetof(GameBoard, playerDowned) == 0x8418,
-              "playerDowned must be at +0x8418");
-static_assert(offsetof(GameBoard, statBars)          == 0x8420,
-              "StatBars must be embedded at +0x8420");
-static_assert(offsetof(GameBoard, statTween)         == 0x9650,
-              "stat-tween list head must be at +0x9650");
-static_assert(offsetof(GameBoard, statTweenAnyAnim)  == 0x9668,
-              "statTweenAnyAnim must be at +0x9668 (= statTween + 0x18)");
-static_assert(offsetof(GameBoard, actionQueue)       == 0x9670,
-              "action queue list head must be at +0x9670");
-static_assert(offsetof(GameBoard, tileWeightPool)    == 0x9688,
-              "tileWeightPool vector must be at +0x9688");
-static_assert(offsetof(GameBoard, discardSlide)      == 0x96A0,
-              "discard slide list head must be at +0x96A0");
-static_assert(offsetof(GameBoard, gameplayItems)     == 0x96B8,
-              "gameplay items vector head must be at +0x96B8");
-static_assert(offsetof(GameBoard, gameplayItemsLiveCount) == 0x96D0,
-              "gameplay items live count must be at +0x96D0");
-static_assert(offsetof(GameBoard, tileReserve)       == 0x96D8,
-              "tile reserve list head must be at +0x96D8");
-static_assert(offsetof(GameBoard, hexMap)            == 0x96F0,
-              "HexMap must be embedded at +0x96F0");
-static_assert(offsetof(GameBoard, exitCol)       == 0x9708,
-              "character grid col must be at +0x9708");
-static_assert(offsetof(GameBoard, exitTileIcon)      == 0x9710,
-              "exitTileIcon must be at +0x9710");
-static_assert(offsetof(GameBoard, exitLockIcons)     == 0x97E8,
-              "exitLockIcons[4] must be at +0x97E8");
-static_assert(offsetof(GameBoard, keysRequired)      == 0x9B48,
-              "keysRequired must be at +0x9B48");
-static_assert(offsetof(GameBoard, keysCollected)     == 0x9B4C,
-              "keysCollected must be at +0x9B4C");
-static_assert(offsetof(GameBoard, exitArrowQuad)     == 0x9B50,
-              "exitArrowQuad must be at +0x9B50");
-static_assert(offsetof(GameBoard, exitArrowDigit)    == 0x9C28,
-              "exitArrowDigit must be at +0x9C28");
-static_assert(offsetof(GameBoard, exitArrowVisible)  == 0x9C60,
-              "exitArrowVisible must be at +0x9C60");
-static_assert(offsetof(GameBoard, exitArrowFade)     == 0x9C64,
-              "exitArrowFade must be at +0x9C64");
-static_assert(offsetof(GameBoard, dimQuad)           == 0x9C68,
-              "dimQuad must be at +0x9C68");
-static_assert(offsetof(GameBoard, dimProgress)       == 0x9D40,
-              "dimProgress must be at +0x9D40");
-static_assert(offsetof(GameBoard, animController)    == 0x9D48,
-              "AnimationController must be embedded at +0x9D48");
-static_assert(offsetof(GameBoard, animBannerSeedHistory) == 0x9DD0,
-              "animBannerSeedHistory vector head must be at +0x9DD0");
-static_assert(offsetof(GameBoard, animBannerSeedPool)    == 0x9DE8,
-              "animBannerSeedPool set head must be at +0x9DE8");
-static_assert(sizeof(std::vector<int64_t>) == 0x18,
-              "std::vector<int64_t> libc++ aarch64 head must be 0x18");
-static_assert(sizeof(std::set<int64_t>) == 0x18,
-              "std::set<int64_t> libc++ aarch64 head must be 0x18");
-static_assert(offsetof(GameBoard, achievementBanner) == 0x9E18,
-              "AchievementBanner must be embedded at +0x9E18");
-static_assert(offsetof(GameBoard, levelUpPanel)      == 0xC7B8,
-              "LevelUpPanel must be embedded at +0xC7B8");
-static_assert(offsetof(GameBoard, itemChoicePanel)   == 0xDEF0,
-              "ItemChoicePanel must be embedded at +0xDEF0");
-static_assert(sizeof(GameBoard) == 0x10E18,
-              "GameBoard struct must be exactly 0x10E18 bytes, matches the "
-              "binary's `operator_new(0x10E18)` in FUN_1000437a4.");

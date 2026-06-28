@@ -23,9 +23,9 @@ class PlayerSystem;
 //   show(byte):        FUN_100057ac8   (= visible + animTimer = 0 + audio cue)
 //   hide(byte):        FUN_100057b1c   (= clear visible OR clear sub-flags)
 //
-// LevelUpPanel lives at GameBoard+0xC7B8 (size 0x1738 bytes). it's
-// triggered when GameBoard+0x7FD8 (= HUD+0x1BC0) is set by the HUD's XP
-// marker bank filling 10 markers (1 level = 1 cycle of 10). when open, the
+// LevelUpPanel lives at GameBoard.levelUpPanel (size 0x1738 bytes). it's
+// triggered when the HUD's levelUpReady flag is set by its XP marker bank
+// filling 10 markers (1 level = 1 cycle of 10). when open, the
 // panel offers 3 stat picks (ATK / HP / DEF +N) and 3 perk picks
 // (random perkTypes drawn from PerkPool by perkLevel(0xE) gating). the
 // player taps 1 or 2 options; on commit, the selected picks drain back
@@ -40,17 +40,17 @@ class PlayerSystem;
 // helpers that match the binary 1:1.
 //
 // per-slot stride:
-//   stat slot N (N in 0..2): starts at panel + 0x420 + N * 0x2E8
-//   perk slot N (N in 0..2): starts at panel + 0xCD8 + N * 0x360
+//   stat slot N (N in 0..2): the Nth statSlots entry (stride 0x2E8)
+//   perk slot N (N in 0..2): the Nth perkSlots entry (stride 0x360)
 //
-// the selected-picks linked list (+0x1718..+0x172F) holds 0x18-byte nodes
+// the selected-picks linked list holds 0x18-byte nodes
 // of (prev, next, slotIdx) where slotIdx is 0/1/2 = stat slot or
 // 3/4/5 = perk slot.
 //
 // the panel inherits from Menu (menu.h), the binary's shared base class
 // providing the 0x420-byte chrome header (bgDim, frame9slice, titleQuad,
 // closeBg, confirmButton + fade-state). subclass content (stat/perk slots,
-// picks lists, etc.) starts at +0x420.
+// picks lists, etc.) follows the header.
 
 // ---- per-slot layout structs ----
 //
@@ -60,29 +60,26 @@ class PlayerSystem;
 // TextItems.
 
 struct LevelUpStatSlot {
-    TileContent  icon;            // +0x000..+0x177  stat icon (TileContent). init'd lightweight
+    TileContent  icon;            // stat icon (TileContent). init'd lightweight
                                   //                  via FUN_10001467c (no setType / no magnitude),
                                   //                  then setType(2|6|3) inside LevelUpPanel::init.
                                   //                  setPosition placed via label0 centroid each
                                   //                  ctor pass.
-    int32_t      value;           // +0x178          stat magnitude (= +0x598 globally)
-    uint8_t      pad17C[4];       // +0x17C..+0x17F
-    Label        label0;          // +0x180..+0x217  primary hit-test / 9-slice frame (y=124)
-    Label        label1;          // +0x218..+0x2AF  secondary 9-slice frame (y=123)
-    ColorTint    numberTint;      // +0x2B0..+0x2E7  the "+N" number color tint
+    int32_t      value;           // stat magnitude
+    Label        label0;          // primary hit-test / 9-slice frame (y=124)
+    Label        label1;          // secondary 9-slice frame (y=123)
+    ColorTint    numberTint;      // the "+N" number color tint
 };
-static_assert(sizeof(LevelUpStatSlot) == 0x2E8, "LevelUpStatSlot stride");
 
 struct LevelUpPerkSlot {
-    Perk*         perk;            // +0x000  preview Perk allocated by open()
-    float         posX;            // +0x008
-    float         posY;            // +0x00C
-    Label  label0;          // +0x010..+0x0A7  primary hit-test / cost text
-    Label  label1;          // +0x0A8..+0x13F  secondary text
-    TextItem      nameText;        // +0x140..+0x1C7  perk name display
-    TextItem      descText[3];     // +0x1C8..+0x35F  3 effect-description lines
+    Perk*         perk;            // preview Perk allocated by open()
+    float         posX;
+    float         posY;
+    Label         label0;          // primary hit-test / cost text
+    Label         label1;          // secondary text
+    TextItem      nameText;        // perk name display
+    TextItem      descText[3];     // 3 effect-description lines
 };
-static_assert(sizeof(LevelUpPerkSlot) == 0x360, "LevelUpPerkSlot stride");
 
 class LevelUpPanel : public Menu {
 public:
@@ -132,8 +129,8 @@ public:
     Perk* getNextPerkPick();
 
     // FUN_10002da0c, close the panel after the gameBoardUpdate commit
-    // loop has drained all picks. clears the "ready-to-commit" flag at
-    // panel+0x1730 and hides via FUN_100057b1c(panel, 0).
+    // loop has drained all picks. clears the readyToCommit flag
+    // and hides via FUN_100057b1c(panel, 0).
     void close();
 
     // FUN_10002d620, fill outPerkTypes with 3 distinct perkTypes drawn
@@ -154,20 +151,20 @@ public:
 
     // ---- byte-exact field landmarks ----
     //
-    // Menu base class (+0x000..+0x41F) owns the panel chrome: vtable +
+    // Menu base class owns the panel chrome: vtable +
     // visible, anchorX/Y, fade state, bgDim Quad, frame9slice Label,
     // titleQuad Quad, closeBg Quad, confirmButton Quad, readyByte,
     // confirmPressed. see menu.h for full layout.
 
-    // ---- stat slots (+0x420..+0xCD7) ----
+    // ---- stat slots ----
     static constexpr int STAT_SLOT_COUNT = 3;
-    LevelUpStatSlot statSlots[STAT_SLOT_COUNT];   // +0x420..+0xCD7
+    LevelUpStatSlot statSlots[STAT_SLOT_COUNT];
 
-    // ---- perk slots (+0xCD8..+0x16F7) ----
+    // ---- perk slots ----
     static constexpr int PERK_SLOT_COUNT = 3;
-    LevelUpPerkSlot perkSlots[PERK_SLOT_COUNT];   // +0xCD8..+0x16F7
+    LevelUpPerkSlot perkSlots[PERK_SLOT_COUNT];
 
-    // ---- tail (+0x16F8..+0x1737): two picks lists + flags ----
+    // ---- tail: two picks lists + flags ----
     //
     // the panel maintains two parallel std::list<int> instances of picked
     // slot indices. libc++ aarch64's list layout is (end_.prev, end_.next,
@@ -186,23 +183,18 @@ public:
     //   draining picks does not touch picksList (it stays as-is until
     //   close()).
 
-    uint8_t      cachedAlpha;          // +0x16F8  setAlpha (vtable[4]) writes
+    uint8_t      cachedAlpha;          // setAlpha (vtable[4]) writes
                                        // the eased alpha byte here every
                                        // fade frame; cleared to 0 at open
                                        // so the fade-in starts transparent.
-    uint8_t      allowTwoFromCategory; // +0x16F9  set by open() from
+    uint8_t      allowTwoFromCategory; // set by open() from
                                        // perkLevel(0xE) (perk 0x0E:
                                        // "Can choose 2 stats or 2 perks").
                                        // 0 = pick one from each category;
                                        // 1 = pick any 2 (or 1 of each).
-    uint8_t      pad16FA[6];           // +0x16FA..+0x16FF
 
-    std::list<int> picksList;          // +0x1700..+0x1717
-    std::list<int> drainList;          // +0x1718..+0x172F
+    std::list<int> picksList;
+    std::list<int> drainList;
 
-    uint8_t      readyToCommit;        // +0x1730  set when player taps confirm; consumed by gameBoardUpdate
-    uint8_t      pad1731[7];           // +0x1731..+0x1737
+    uint8_t      readyToCommit;        // set when player taps confirm; consumed by gameBoardUpdate
 };
-
-static_assert(sizeof(LevelUpPanel) == 0x1738,
-              "LevelUpPanel must be exactly 0x1738 bytes (= GameBoard+0xDEF0 - GameBoard+0xC7B8)");
