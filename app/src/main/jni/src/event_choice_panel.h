@@ -152,9 +152,8 @@ public:
     // a std::set<int> (libc++ aarch64 layout: 16-byte sentinel
     // + 8-byte size = 0x18 bytes, matches exactly).
     //
-    // not currently populated by anything in our port (the binary's
-    // close-without-pick path adds to it; TBD when that's wired up).
-
-    // TODO what's the deal with this?
+    // vestigial: the binary reads this set when rolling candidates (folding it
+    // into the exclusion set) but no code path ever inserts into it, so it
+    // stays empty. our port matches: declared and read, never populated.
     std::set<int> excludedHistory;
 };

@@ -231,10 +231,10 @@ public:
     //                      1 = user icon (top-left, paired with playerIcon)
     //                      2 = hamburger / settings menu (top-right, paired
     //                          with menuIcon)
-    //                      3 = largeButtonFrame, gated by conditionalFlag
-    //                          (paired with conditionalIcon; TBD which
-    //                          on-screen button; only fires when
-    //                          conditionalFlag is set)
+    //                      3 = largeButtonFrame = the discard button (paired
+    //                          with conditionalIcon; shown only when
+    //                          conditionalFlag is set, i.e. a rack tile can be
+    //                          discarded)
     //                      written on touch-down hit, restored to 0 on release.
     //   publishedState   = engagementState when the release lands on the same
     //                      header. read by GameBoard::update to dispatch the click.

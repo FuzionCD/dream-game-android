@@ -423,18 +423,18 @@ void buildDirList(GameBoard* board, TileObject* pickedTile,
     const int* endCoord = nullptr;
     int picCol = pickedTile->gridCol;
     int picRow = pickedTile->gridRow;
-    int exitCol = board->exitCol;
-    int exitRow = board->exitRow;
+    int exitCol = board->exitGridCol;
+    int exitRow = board->exitGridRow;
 
     if (board->keysCollected < board->keysRequired) {
 
         if (board->keysCollected + 1 < board->keysRequired) {
-            endCoord = &board->exitCol;
+            endCoord = &board->exitGridCol;
         } else {
             int dist = hexGridDistance(picCol, picRow, exitCol, exitRow);
 
             if (dist != 1) {
-                endCoord = &board->exitCol;
+                endCoord = &board->exitGridCol;
             }
         }
     }
@@ -904,7 +904,7 @@ void GameBoard::draw() {
     // 8.5 exit tile + lock icons. binary gates these on "oldest tile is
     //     not on the exit hex": once the player commits a tile at the
     //     exit, the exit visual disappears (the player's tile sits there).
-    if (oldestCol != exitCol || oldestRow != exitRow) {
+    if (oldestCol != exitGridCol || oldestRow != exitGridRow) {
         exitTileIcon.quad.draw();
 
         for (int i = 0; i < keysRequired; i++) {
@@ -1816,7 +1816,7 @@ void GameBoard::updateNemesisAndCloseStrike(float dt, float touchInput) {
 //     applyTileResolutionDispatch(20 - nemesis.nemesisXP)   // FUN_10001dbe4
 //     append a kind=0 decoration to the actionQueue sub-collection
 //   if content-type == 0x11 (= 17, magnitude > 1): split tile via
-//     pushReserveTile(0x11, 0xFFFFFFFF) then apply half-magnitude.
+//     pushReserveTile(0x11, -1) then apply half-magnitude.
 //   if content-type == 6 (HP tile):  chain to FUN_100020d80 (= setHP).
 //   if content-type == 3 (DEF tile): chain to FUN_100020ce0 (= setDEF).
 //   if content-type == 2 (ATK tile): chain to FUN_100020c40 (= setATK).
@@ -1883,7 +1883,7 @@ void GameBoard::discardRackTile(int slotIdx, bool skipExtraEffects) {
             int mag = tile->getContentMagnitude();
 
             if (mag > 1) {
-                TileObject* spawned = pushReserveTile(0x11u, 0xFFFFFFFFu);
+                TileObject* spawned = pushReserveTile(0x11u, -1);
 
                 if (spawned) {
                     TileContent* tc = spawned->getTileContentIfAlive();
@@ -2196,7 +2196,7 @@ void GameBoard::tryShowXButton() {
         }
 
         // exit-locked: skip the exit hex while still need keys.
-        if (targetCol == exitCol && targetRow == exitRow &&
+        if (targetCol == exitGridCol && targetRow == exitGridRow &&
             keysCollected < keysRequired) {
             continue;
         }
@@ -2269,12 +2269,12 @@ void GameBoard::tryShowXButton() {
 // the saved exit position). keysRequired / keysCollected are seeded by the
 // caller's following setExitKeysRequired + recomputeExitKeysCollected.
 void GameBoard::placeExitAndKeys(int col, int row) {
-    exitCol = col;
-    exitRow = row;
+    exitGridCol = col;
+    exitGridRow = row;
 
     // exit cell: kind=1, fadeTimer=0. addCell special-cases kind=1 to use
     // zero UV (the exit's icon comes from the exitTileIcon Quad below).
-    hexMap.addCell(1, exitCol, exitRow, 0);
+    hexMap.addCell(1, exitGridCol, exitGridRow, 0);
 
     // key cells: walk a 3x3 neighborhood of the exit; for each offset whose
     // hex distance from origin is exactly 1 (= an actual hex neighbor, not a
@@ -2285,7 +2285,7 @@ void GameBoard::placeExitAndKeys(int col, int row) {
         for (int dy = -1; dy <= 1; dy++) {
 
             if (hexGridDistance(0, 0, dx, dy) == 1) {
-                hexMap.addCell(2, exitCol + dx, exitRow + dy, 0);
+                hexMap.addCell(2, exitGridCol + dx, exitGridRow + dy, 0);
             }
         }
     }
@@ -2300,7 +2300,7 @@ void GameBoard::placeExitAndKeys(int col, int row) {
     // the function "returns" hexX in s0 but also leaves hexY in s1, which
     // FUN_1000175f0 offsets by DAT_100059f30 (-0.01875) for posY. net: the
     // exit tile sits AT the exit hex with a small upward offset.
-    HexCellPos exitPos = hexCellLinearXY(exitCol, exitRow);
+    HexCellPos exitPos = hexCellLinearXY(exitGridCol, exitGridRow);
     exitTileIcon.quad.posX = exitPos.x + 0.0015625f;
     exitTileIcon.quad.posY = exitPos.y + (-0.01875f);
     exitTileIcon.quad.snapToPixelGrid();
@@ -2339,7 +2339,7 @@ void GameBoard::setExitKeysRequired(int requestedCount) {
 }
 
 // FUN_1000178fc -- walk page list, count tiles at hex distance 1 from
-// (exitCol, exitRow) into keysCollected; flip each lock UV (filled if
+// (exitGridCol, exitGridRow) into keysCollected; flip each lock UV (filled if
 // i < keysCollected) and exitTileIcon UV (unlocked once collected
 // reaches required); fire sound 0x3F on the locked -> unlocked transition.
 void GameBoard::recomputeExitKeysCollected() {
@@ -2349,7 +2349,7 @@ void GameBoard::recomputeExitKeysCollected() {
 
     for (const TileObject* t : pageList) {
 
-        if (t && hexGridDistance(t->gridCol, t->gridRow, exitCol, exitRow) == 1) {
+        if (t && hexGridDistance(t->gridCol, t->gridRow, exitGridCol, exitGridRow) == 1) {
             keysCollected++;
         }
     }
@@ -2409,7 +2409,7 @@ void GameBoard::updateExitArrowVisualState() {
         }
     }
 
-    int dist = hexGridDistance(anchorCol, anchorRow, exitCol, exitRow);
+    int dist = hexGridDistance(anchorCol, anchorRow, exitGridCol, exitGridRow);
 
     if (dist < 4) {
         return;
@@ -2418,7 +2418,7 @@ void GameBoard::updateExitArrowVisualState() {
     exitArrowVisible = true;
 
     HexCellPos anchorPos = hexCellLinearXY(anchorCol, anchorRow);
-    HexCellPos exitPos   = hexCellLinearXY(exitCol,   exitRow);
+    HexCellPos exitPos   = hexCellLinearXY(exitGridCol, exitGridRow);
 
     float dx       = exitPos.x - anchorPos.x;
     float dy       = exitPos.y - anchorPos.y;
@@ -3069,7 +3069,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
                 if (tile->getContentType() != 6) continue;
 
                 discardRackTile(i, false);
-                pushReserveTile(3, 0xffffffff);   // {D} replacement
+                pushReserveTile(3, -1);   // {D} replacement
                 any = true;
             }
 
@@ -3455,13 +3455,13 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
             // Discipline. its per-discard value growth ("gains 1 value per
             // tile you discard") is ported in the batch-commit pass-3 rack
             // walk (content 0xb branch).
-            pushReserveTile(11, 0xffffffffu);
+            pushReserveTile(11, -1);
             return true;
         }
 
         case EventKind::DeepClarity: {
             // case 0x1a: "Draw a Clarity tile." contentType 12 = Clarity.
-            pushReserveTile(12, 0xffffffffu);
+            pushReserveTile(12, -1);
             return true;
         }
 
@@ -3506,7 +3506,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
         case EventKind::AlluringSigil: {
             // case 0x1e: "Draw a Lure tile." contentType 13 = Lure.
-            pushReserveTile(13, 0xffffffffu);
+            pushReserveTile(13, -1);
             return true;
         }
 
@@ -3634,7 +3634,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
         case EventKind::BarricadedDoor: {
             // case 0x24: "Draw a Barricade tile." contentType 15 = Barricade.
-            pushReserveTile(15, 0xffffffffu);
+            pushReserveTile(15, -1);
             return true;
         }
 
@@ -3973,7 +3973,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
                 discardRackTile(slotIdx, false);
             }
 
-            SnagContent* snag = pushReserveSnagTile(1u, 0xffffffffu);
+            SnagContent* snag = pushReserveSnagTile(1u, -1);
             float zero[2] = { 0.0f, 0.0f };
             snag->setHpDisplay(1, nullptr, zero);
             refillRackPostCommit();
@@ -3989,14 +3989,14 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
             }
             if (hpCount == 0) return false;
             for (int k = 0; k < hpCount; ++k) {
-                pushReserveTile(0x14u, 0xffffffffu);   // content type 20 = Faith
+                pushReserveTile(0x14u, -1);   // content type 20 = Faith
             }
             return true;
         }
 
         case EventKind::LongRangeScan: {
             // case 0x33: "Draw a Foresight tile." content type 21 = Foresight.
-            pushReserveTile(0x15u, 0xffffffffu);
+            pushReserveTile(0x15u, -1);
             return true;
         }
 
@@ -4082,7 +4082,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
         case EventKind::WarmGlow: {
             // case 0x38: "Draw a Warmth tile." content type 23 = Warmth.
-            pushReserveTile(0x17u, 0xffffffffu);
+            pushReserveTile(0x17u, -1);
             return true;
         }
 
@@ -4179,7 +4179,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
         case EventKind::HardWork: {
             // case 0x3d: "Draw an Effort tile." content type 24 = Effort.
-            pushReserveTile(0x18u, 0xffffffffu);
+            pushReserveTile(0x18u, -1);
             return true;
         }
 
@@ -4299,7 +4299,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
                 if (k != 0) {
                     discardRackTile(snagSlots[k], false);
-                    pushReserveTile(6u, 0xffffffffu);   // content type 6 = HP
+                    pushReserveTile(6u, -1);   // content type 6 = HP
                 }
                 atkSum += snagAtk;
                 defSum += snagDef;
@@ -4367,7 +4367,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
                 }
             }
 
-            TileObject* drawn = pushReserveTile(3u, 0xffffffffu);
+            TileObject* drawn = pushReserveTile(3u, -1);
 
             if (drawn) {
                 TileContent* tc = drawn->getTileContentIfAlive();
@@ -4492,8 +4492,8 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
                 candidates.erase(candidates.begin() + pick);
                 discardRackTile(slotIdx, false);
             }
-            pushReserveTile(2u, 0xffffffffu);
-            pushReserveTile(2u, 0xffffffffu);
+            pushReserveTile(2u, -1);
+            pushReserveTile(2u, -1);
             refillRackPostCommit();
             return true;
         }
@@ -4504,7 +4504,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
             // pushReserveTile). when placed it moves to the trail start
             // and gains 1 HP per turn, eventually delivering its HP as
             // ATK to the player on contact.
-            pushReserveSnagTile(0x6cu, 0xffffffffu);
+            pushReserveSnagTile(0x6cu, -1);
             return true;
         }
 
@@ -4753,7 +4753,7 @@ void GameBoard::commitPendingDiscards() {
             }
 
             if (playerSystem.perkLevel(7) > 0) {
-                pushReserveTile(3u, 0xFFFFFFFFu);
+                pushReserveTile(3u, -1);
             }
         }
 
@@ -4796,7 +4796,7 @@ void GameBoard::commitPendingDiscards() {
         // Incompetence (snag 0x5B) anywhere on the board pushes a content-0
         // reserve tile on each batch.
         if (hasSnagInBoard(0x5b)) {
-            pushReserveTile(0u, 0xFFFFFFFFu);
+            pushReserveTile(0u, -1);
         }
 
         // pass 3: rack-walk stat-change tween dispatch for tiles whose
@@ -5188,7 +5188,7 @@ void GameBoard::dispatchHexMapPostCommit(TileObject* placedTile) {
             }
 
             case 3:
-                pushReserveSnagTile(1, 0xFFFFFFFFu);
+                pushReserveSnagTile(1, -1);
                 break;
 
             case 5:
@@ -5293,7 +5293,7 @@ void GameBoard::dispatchHexMapPostCommit(TileObject* placedTile) {
             findSnagInRack(100) != nullptr) {
             // "Neglect: Draw a blank when you place an ATK or DEF tile":
             // pushes a contentType=0 (blank) tile onto the reserve queue.
-            pushReserveTile(0, 0xFFFFFFFFu);
+            pushReserveTile(0, -1);
         }
     }
 
@@ -5598,13 +5598,13 @@ void GameBoard::dispatchSnagPostCommit(SnagContent* snag) {
 
         case 0x1a: {  // Stranger: push a random snag tile onto reserve.
             int rolledType = rollSnagType();
-            pushReserveSnagTile((uint32_t)rolledType, 0xffffffffu);
+            pushReserveSnagTile((uint32_t)rolledType, -1);
             pushFallThroughAction();
             break;
         }
 
         case 0x21:  // Alarm Bells: push a fixed snag-22 onto reserve.
-            pushReserveSnagTile(0x22u, 0xffffffffu);
+            pushReserveSnagTile(0x22u, -1);
             pushFallThroughAction();
             break;
 
@@ -5635,8 +5635,8 @@ void GameBoard::dispatchSnagPostCommit(SnagContent* snag) {
 
         case 0x36:  // Repressed Memory: push 2x XP tile (content type 8)
                     // via FUN_100017fb8 (= pushReserveTile, not snag tile).
-            pushReserveTile(8u, 0xffffffffu);
-            pushReserveTile(8u, 0xffffffffu);   // LAB_100025a24 second call
+            pushReserveTile(8u, -1);
+            pushReserveTile(8u, -1);   // LAB_100025a24 second call
             break;
 
         case 0x3d: {  // Malice: drain HP by current ATK amount.
@@ -5674,7 +5674,7 @@ void GameBoard::dispatchSnagPostCommit(SnagContent* snag) {
 
         case 0x46: {  // Heavy Burden: push a content-9 tile, set its
                       // magnitude to 9 via FUN_100014870.
-            TileObject* spawned = pushReserveTile(9u, 0xffffffffu);
+            TileObject* spawned = pushReserveTile(9u, -1);
 
             if (spawned) {
                 TileContent* tc = spawned->getTileContentIfAlive();
@@ -5707,7 +5707,7 @@ void GameBoard::dispatchSnagPostCommit(SnagContent* snag) {
 
         case 0x56: {  // Sharp Pain: push content-0x11 tile with magnitude
                       // = playerMaxHP.
-            TileObject* spawned = pushReserveTile(0x11u, 0xffffffffu);
+            TileObject* spawned = pushReserveTile(0x11u, -1);
 
             if (spawned) {
                 TileContent* tc = spawned->getTileContentIfAlive();
@@ -5751,7 +5751,7 @@ void GameBoard::dispatchSnagPostCommit(SnagContent* snag) {
             int n = rngInt(1, 6, 4);
 
             while (n > 0) {
-                pushReserveTile(0x13u, 0xffffffffu);
+                pushReserveTile(0x13u, -1);
                 n--;
             }
             break;
@@ -5786,7 +5786,7 @@ void GameBoard::dispatchSnagPostCommit(SnagContent* snag) {
         case 0x6a:  // Sharp Shock: single XP-tile reserve push (only the
                     // LAB_100025a24 path runs; case 0x36's preceding call
                     // is skipped because we entered via direct `goto`).
-            pushReserveTile(8u, 0xffffffffu);
+            pushReserveTile(8u, -1);
             break;
 
         case 0x6b: {  // Trouble: register kind-3 HexMap cells in 3x3 around
@@ -5841,7 +5841,7 @@ void GameBoard::dispatchSnagPostCommit(SnagContent* snag) {
                         continue;
                     }
 
-                    hexMap.addCell(3, exitCol + dCol, exitRow + dRow, 0);
+                    hexMap.addCell(3, exitGridCol + dCol, exitGridRow + dRow, 0);
                 }
             }
 
@@ -5981,7 +5981,7 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
         }
         else if (snag->type == 0x5f && (int32_t)rawDamage > 0) {
             // Sadism: spawn a content-0x11 reserve tile with magnitude = damage.
-            TileObject* spawned = pushReserveTile(0x11u, 0xffffffffu);
+            TileObject* spawned = pushReserveTile(0x11u, -1);
 
             if (spawned) {
                 TileContent* tc = spawned->getTileContentIfAlive();
@@ -6122,7 +6122,7 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
         int origCount    = snag->obsessionCount;
 
         if (rngInt(0, 99, 4) < origConsumed) {
-            SnagContent* spawned = pushReserveSnagTile(6u, (uint32_t)origCount);
+            SnagContent* spawned = pushReserveSnagTile(6u, origCount);
 
             if (spawned) {
                 int next = origConsumed - 0x14;
@@ -6142,7 +6142,7 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
         if (snag->def == 0) {
             // no def: fall through to XP gain.
         } else {
-            SnagContent* spawned = pushReserveSnagTile(0x1bu, 0xffffffffu);
+            SnagContent* spawned = pushReserveSnagTile(0x1bu, -1);
 
             if (spawned) {
                 float zero[2] = { 0.0f, 0.0f };
@@ -6172,7 +6172,7 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
     else if (snagType == 0x22) {
         // DistantEcho: ~50% chance to spawn another snag-0x22.
         if (rngInt(0, 100, 4) > 0x32) {
-            pushReserveSnagTile(0x22u, 0xffffffffu);
+            pushReserveSnagTile(0x22u, -1);
         }
     }
     else if (snagType == 0x44) {
@@ -6193,7 +6193,7 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
         int n = rngInt(1, 3, 4);
 
         while (n > 0) {
-            pushReserveSnagTile(0x4bu, 0xffffffffu);
+            pushReserveSnagTile(0x4bu, -1);
             n--;
         }
     }
@@ -6203,7 +6203,7 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
         float zero[2] = { 0.0f, 0.0f };
 
         if (snag->atk != 0) {
-            SnagContent* atkSnag = pushReserveSnagTile(0x4du, 0xffffffffu);
+            SnagContent* atkSnag = pushReserveSnagTile(0x4du, -1);
 
             if (atkSnag) {
                 atkSnag->setAtkDisplay(snag->atk, nullptr, zero);
@@ -6213,7 +6213,7 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
         }
 
         if (snag->def != 0) {
-            SnagContent* defSnag = pushReserveSnagTile(0x4eu, 0xffffffffu);
+            SnagContent* defSnag = pushReserveSnagTile(0x4eu, -1);
 
             if (defSnag) {
                 defSnag->setAtkDisplay(snag->def, nullptr, zero);
@@ -6254,14 +6254,14 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
     else if (snagType == 0x5a) {
         // Surprise: roll random snag-type and spawn it.
         int rolledType = rollSnagType();
-        pushReserveSnagTile((uint32_t)rolledType, 0xffffffffu);
+        pushReserveSnagTile((uint32_t)rolledType, -1);
         pushTrailingAction = true;   // case 0x5a breaks to LAB_1000265e4
     }
     else if (snagType == 0x5d) {
         // HiddenAgenda: spawn a content-0x12 tile with atk magnitude (if
         // atk != 0) and another with def magnitude (if def != 0).
         if (snag->atk != 0) {
-            TileObject* spawned = pushReserveTile(0x12u, 0xffffffffu);
+            TileObject* spawned = pushReserveTile(0x12u, -1);
 
             if (spawned) {
                 TileContent* tc = spawned->getTileContentIfAlive();
@@ -6273,7 +6273,7 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
         }
 
         if (snag->def != 0) {
-            TileObject* spawned = pushReserveTile(0x12u, 0xffffffffu);
+            TileObject* spawned = pushReserveTile(0x12u, -1);
 
             if (spawned) {
                 TileContent* tc = spawned->getTileContentIfAlive();
@@ -6286,7 +6286,7 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
     }
     else if (snagType == 0x60) {
         // Glory: spawn a content-9 tile with magnitude = snag.hp at entry.
-        TileObject* spawned = pushReserveTile(9u, 0xffffffffu);
+        TileObject* spawned = pushReserveTile(9u, -1);
 
         if (spawned) {
             TileContent* tc = spawned->getTileContentIfAlive();
@@ -6300,7 +6300,7 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
     else if (snagType == 0x61) {
         // Distrust: spawn 2 content-9 tiles with rng[1..7] magnitudes.
         for (int i = 0; i < 2; i++) {
-            TileObject* spawned = pushReserveTile(9u, 0xffffffffu);
+            TileObject* spawned = pushReserveTile(9u, -1);
 
             if (spawned) {
                 TileContent* tc = spawned->getTileContentIfAlive();
@@ -6544,13 +6544,13 @@ void GameBoard::applyEndOfTurnPipeline(float dt) {
     // tick HexMap fade timers (2 -> 1 -> deactivate).
     hexMap.tickFade();
 
-    // tick the per-entry eligibility counter on every reserve tile. colorParam
-    // (TileReserveEntry.colorParam) is a signed pop-eligibility gate: it starts at -1
+    // tick the per-entry eligibility counter on every reserve tile. drawCountdown
+    // (TileReserveEntry.drawCountdown) is a signed pop-eligibility gate: it starts at -1
     // (already poppable) and ticks further negative each turn; rollRackTile
-    // pops an entry only when colorParam < 0. (= FUN_10001df54's per-node
-    // colorParam decrement walk over the tileReserve list.)
+    // pops an entry only when drawCountdown < 0. (= FUN_10001df54's per-node
+    // drawCountdown decrement walk over the tileReserve list.)
     for (TileReserveEntry& entry : tileReserve) {
-        entry.colorParam--;
+        entry.drawCountdown--;
     }
 
     // section-1 snag-type counts driving the rack walk's pre-effect.
@@ -6767,7 +6767,7 @@ void GameBoard::applyEndOfTurnPipeline(float dt) {
                 aliveSnag->consumedFlag = oldFlag ^ 1;
 
                 if (oldFlag != 0) {
-                    pushReserveSnagTile(0x12u, 0xFFFFFFFFu);
+                    pushReserveSnagTile(0x12u, -1);
                 }
             }
             doubtFiredOnce = true;
@@ -7231,7 +7231,7 @@ void GameBoard::applyEndOfTurnPipeline(float dt) {
                 // current atk/def/hp into the spawn, then kill self. binary
                 // passes a null tweenBoard for the spawn's stat displays
                 // (no floating "+N"; the spawn starts at zero).
-                SnagContent* spawned = pushReserveSnagTile(10u, 0xFFFFFFFFu);
+                SnagContent* spawned = pushReserveSnagTile(10u, -1);
 
                 if (spawned) {
                     spawned->setAtkDisplay(sn->atk);
@@ -8035,15 +8035,15 @@ void GameBoard::finalizeTileRotation(TileObject* tile, bool useFitting, bool use
     if (keysCollected < keysRequired) {
 
         if (keysCollected + 1 < keysRequired) {
-            effectiveEnd = &exitCol;
+            effectiveEnd = &exitGridCol;
         } else {
             // edge case: one key short. allow connection to exit only when
             // the tile is exactly 1 hex from the exit.
             int distToExit = hexGridDistance(tile->gridCol, tile->gridRow,
-                                             exitCol, exitRow);
+                                             exitGridCol, exitGridRow);
 
             if (distToExit != 1) {
-                effectiveEnd = &exitCol;
+                effectiveEnd = &exitGridCol;
             }
         }
     }
@@ -8051,7 +8051,7 @@ void GameBoard::finalizeTileRotation(TileObject* tile, bool useFitting, bool use
     float dirHint = 0.0f;
 
     if (useDirHint) {
-        HexCellPos exitPos  = hexCellLinearXY(exitCol, exitRow);
+        HexCellPos exitPos  = hexCellLinearXY(exitGridCol, exitGridRow);
         HexCellPos tilePos  = hexCellLinearXY(tile->gridCol, tile->gridRow);
         float dx = exitPos.x - tilePos.x;
         float dy = exitPos.y - tilePos.y;
@@ -8362,8 +8362,8 @@ void GameBoard::setupDragCursorTabs(TileObject* picked) {
     }
 
     // exit cell coord for the rules-engine end-gate. binary reads
-    // the exitCol/exitRow pair.
-    const int exitCoord[2] = {exitCol, exitRow };
+    // the exitGridCol/exitGridRow pair.
+    const int exitCoord[2] = {exitGridCol, exitGridRow };
 
     static constexpr int kDirDeltas[6][2] = {
         { 0, -1},  // 0
@@ -8414,8 +8414,8 @@ void GameBoard::setupDragCursorTabs(TileObject* picked) {
         // exit-locked gate: the proposed neighbor is the exit cell and
         // the player still has keys outstanding -> force red, force
         // tileCursorState=0 so the directional walk rejects it.
-        bool exitLocked = (neighborCol == exitCol &&
-                           neighborRow == exitRow &&
+        bool exitLocked = (neighborCol == exitGridCol &&
+                           neighborRow == exitGridRow &&
                           keysCollected < keysRequired);
 
         uint8_t r, g, b, a;
@@ -10731,7 +10731,7 @@ void GameBoard::applyHexPickupConsumeEffect(float /*dt*/) {
             discardRackTile(slotIdx, false);
             {
                 int rolled = rollSnagType();
-                pushReserveSnagTile(static_cast<uint32_t>(rolled), 0xffffffffu);
+                pushReserveSnagTile(static_cast<uint32_t>(rolled), -1);
             }
             dispatched = true;
             break;
@@ -10788,7 +10788,7 @@ void GameBoard::applyHexPickupConsumeEffect(float /*dt*/) {
                    //              with 1 {A}."
             discardRackTile(slotIdx, false);
             {
-                SnagContent* snag = pushReserveSnagTile(1u, 0xffffffffu);
+                SnagContent* snag = pushReserveSnagTile(1u, -1);
                 float zero[2] = { 0.0f, 0.0f };
                 snag->setAtkDisplay(1, nullptr, zero);
             }
@@ -12587,15 +12587,15 @@ void GameBoard::initLevelContent() {
     int populateCount = 5;
 
     if (worldLevelIndex == 1) {
-        pushReserveTile(3, 0xFFFFFFFF);
-        pushReserveTile(3, 0xFFFFFFFF);
-        pushReserveTile(6, 0xFFFFFFFF);
-        pushReserveTile(2, 0xFFFFFFFF);
-        pushReserveTile(2, 0xFFFFFFFF);
-        pushReserveTile(3, 0xFFFFFFFF);
-        pushReserveTile(2, 0xFFFFFFFF);
-        pushReserveTile(5, 0xFFFFFFFF);
-        pushReserveSnagTile(1, 0xFFFFFFFF);
+        pushReserveTile(3, -1);
+        pushReserveTile(3, -1);
+        pushReserveTile(6, -1);
+        pushReserveTile(2, -1);
+        pushReserveTile(2, -1);
+        pushReserveTile(3, -1);
+        pushReserveTile(2, -1);
+        pushReserveTile(5, -1);
+        pushReserveSnagTile(1, -1);
     }
 
     // 7.22 5x populateRack, popping one tile from reserve into rack[0..4]
@@ -12608,7 +12608,7 @@ void GameBoard::initLevelContent() {
     hexMap.init();
 
     // 7.24 layout pass (port of FUN_100018408 -> FUN_1000175f0). RNG-rolls
-    // a (col, row) jitter origin, writes it to exitCol/exitRow, then adds
+    // a (col, row) jitter origin, writes it to exitGridCol/exitGridRow, then adds
     // the level-exit cell (kind=1) plus the 6 hex-neighbor key cells
     // (kind=2) to the hex map so HexMap::draw can render the goal markers.
     {
@@ -13029,7 +13029,7 @@ void GameBoard::seedPickupSnagThreshold() {
 }
 
 // FUN_100017fb8, push a content tile onto the reserve queue (newest end).
-TileObject* GameBoard::pushReserveTile(uint32_t contentType, uint32_t colorParam) {
+TileObject* GameBoard::pushReserveTile(uint32_t contentType, int32_t drawCountdown) {
     TileObject* tile = new TileObject();
     tile->init();
 
@@ -13038,7 +13038,7 @@ TileObject* GameBoard::pushReserveTile(uint32_t contentType, uint32_t colorParam
     tile->setVisual(gridLayout, gridIdx, contentType, magnitude);
 
     // push-back (newest end).
-    tileReserve.emplace_back(tile, colorParam);
+    tileReserve.emplace_back(tile, drawCountdown);
 
     return tile;
 }
@@ -13049,12 +13049,12 @@ TileObject* GameBoard::rollRackTile(uint32_t flag) {
 
     // walk from front (oldest) toward back (newest).
     for (auto it = tileReserve.begin(); it != tileReserve.end(); ++it) {
-        // pop predicate: signed colorParam < 0 and (flag&1 != 0 or snag not alive).
-        bool colorNeg = static_cast<int32_t>(it->colorParam) < 0;
+        // pop predicate: signed drawCountdown < 0 and (flag&1 != 0 or snag not alive).
+        bool drawReady = it->drawCountdown < 0;
         bool flagBit  = (flag & 1) != 0;
         bool snagDead = (it->tile->getSnagIfAlive() == nullptr);
 
-        if (colorNeg && (flagBit || snagDead)) {
+        if (drawReady && (flagBit || snagDead)) {
             TileObject* tile = it->tile;
             tileReserve.erase(it);
             return tile;
@@ -13112,7 +13112,7 @@ TileObject* GameBoard::rollRackTile(uint32_t flag) {
             contentType = rollSnagType();
 
             if (contentType == 0x2c) {
-                pushReserveTile(8, 0xffffffff);
+                pushReserveTile(8, -1);
                 contentType = 0x2c;
             }
         }
@@ -13245,7 +13245,7 @@ void GameBoard::populateRack() {
 // FUN_10001809c, push a snag tile onto the reserve queue. trailing
 // FUN_100013410 read is preserved for byte-faithful call sequence; result
 // discarded by the binary.
-SnagContent* GameBoard::pushReserveSnagTile(uint32_t kind, uint32_t colorParam) {
+SnagContent* GameBoard::pushReserveSnagTile(uint32_t kind, int32_t drawCountdown) {
     TileObject* tile = new TileObject();
     tile->init();
 
@@ -13255,7 +13255,7 @@ SnagContent* GameBoard::pushReserveSnagTile(uint32_t kind, uint32_t colorParam) 
     tile->setSnagVisual(gridLayout, gridIdx, kind, &playerSystem,
                         totalTurnCount, levelTurnCount, static_cast<int>(worldIndex));
 
-    tileReserve.emplace_back(tile, colorParam);
+    tileReserve.emplace_back(tile, drawCountdown);
 
     // matches the binary's `b 0x100013410` tail call: return the new
     // snag's SnagContent pointer (or null if not alive, which shouldn't
@@ -13538,8 +13538,8 @@ void GameBoard::dirtyXferSnapshot(GameSnapshot& snap) {
 
     // 5. simple field copies.
     snap.gridLayout          = static_cast<uint32_t>(this->gridLayout);
-    snap.exitCol             = this->exitCol;
-    snap.exitRow             = this->exitRow;
+    snap.exitCol             = this->exitGridCol;
+    snap.exitRow             = this->exitGridRow;
     snap.keysRequired        = static_cast<uint32_t>(this->keysRequired);
     snap.levelTurnCount      = static_cast<uint32_t>(this->levelTurnCount);
     snap.pickupSnagThreshold = static_cast<uint32_t>(this->pickupSnagThreshold);
@@ -13597,7 +13597,7 @@ void GameBoard::dirtyXferSnapshot(GameSnapshot& snap) {
     }
 
     // 8. reserveItems list snapshot. walk the std::list from front
-    //    (oldest) to back (newest). per entry: capture colorParam +
+    //    (oldest) to back (newest). per entry: capture drawCountdown +
     //    extract the tile fields.
     snap.reserveItems.clear();
     snap.reserveItems.reserve(this->tileReserve.size());
@@ -13627,10 +13627,10 @@ void GameBoard::dirtyXferSnapshot(GameSnapshot& snap) {
             e.snagObsessionCount = static_cast<int32_t>(snagFields[5]);
         }
 
-        // colorParam from entry: encoder will truncate to its low byte
+        // drawCountdown from entry: encoder will truncate to its low byte
         // on disk; we keep the full 32 bits in memory so a future codepath
         // that reads the un-saved form sees what the binary would.
-        e.listSlotIndex = static_cast<int32_t>(entry.colorParam);
+        e.listSlotIndex = entry.drawCountdown;
     }
 
     // 9. placedTiles list snapshot + placedContentMap + placedSnagMap fill.

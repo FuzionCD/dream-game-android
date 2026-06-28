@@ -82,7 +82,7 @@ struct RackTileSnapshot {
 // the prefix int comes from the list node itself, the rest from the
 // embedded TileObject* via FUN_100013dd8 (no coords vec).
 struct ReserveItemSnapshot {
-    int32_t   listSlotIndex;       // TileReserveEntry.colorParam (signed char source)
+    int32_t   listSlotIndex;       // TileReserveEntry.drawCountdown (signed char source)
     uint32_t  gridIdx;             // TileObject.gridIdx
     bool      mirror;              // TileObject.mirror
     uint32_t  rotationStep;        // TileObject.rotationStep
@@ -181,8 +181,8 @@ struct GameSnapshot {
     uint8_t   hintFlags[24];
 
     uint32_t  gridLayout;            // <- u8 , gb.gridLayout (cosmetic 0..11)
-    int32_t   exitCol;               // <- i16, gb.exitCol
-    int32_t   exitRow;               // <- i16, gb.exitRow
+    int32_t   exitCol;               // <- i16, gb.exitGridCol
+    int32_t   exitRow;               // <- i16, gb.exitGridRow
     uint32_t  keysRequired;          // <- u8 , gb.keysRequired
     uint32_t  levelTurnCount;        // <- u16, gb.levelTurnCount
     uint32_t  pickupSnagThreshold;   // <- u16, gb.pickupSnagThreshold

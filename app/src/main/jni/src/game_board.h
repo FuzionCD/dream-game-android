@@ -125,22 +125,23 @@ struct TweenBody {
 };
 
 // tile reserve queue at GameBoard.tileReserve: a FIFO of pre-built tiles waiting to
-// be dealt into the rack. each entry pairs a TileObject* with colorParam, a
-// signed pop-eligibility counter (a misnomer; rename pending). every push sets
-// it to -1 (0xFFFFFFFF = already poppable) and the per-turn pipeline ticks it
-// further negative; rollRackTile pops an entry only when colorParam < 0. the
-// save snapshot round-trips the value verbatim.
+// be dealt into the rack. each entry pairs a TileObject* with drawCountdown, a
+// per-turn countdown gating when the tile is dealt: rollRackTile deals an entry
+// only once drawCountdown < 0. almost every push sets it to -1 (dealable immediately);
+// Obsession snags (kind 6) push obsessionCount so the spawned tile is held that many
+// turns. the per-turn code loop decrements every entry, and the save system keeps
+// the value verbatim.
 struct TileReserveEntry {
     class TileObject* tile;
-    uint32_t          colorParam;
+    int32_t           drawCountdown;
 
     TileReserveEntry()
         : tile(nullptr)
-        , colorParam(0) {}
+        , drawCountdown(0) {}
 
-    TileReserveEntry(class TileObject* t, uint32_t cp)
+    TileReserveEntry(class TileObject* t, int32_t cp)
         : tile(t)
-        , colorParam(cp) {}
+        , drawCountdown(cp) {}
 };
 
 // discard-slide list at GameBoard.discardSlide: tiles being animated off the rack.
@@ -215,7 +216,7 @@ public:
     // GameSnapshot. called from Game::update's mid-run save-trigger gate
     // (dirty != 0 && state == 1 && !eventChoicePanel.visible). clears
     // this->dirty on entry. covers the 7-int counter block,
-    // worldIndex/tutorialFlag/gridLayout/exitCol/exitRow/keysRequired/
+    // worldIndex/tutorialFlag/gridLayout/exitGridCol/exitGridRow/keysRequired/
     // levelTurnCount/pickupSnagThreshold, hintFlags region, variantsUsed
     // + animBannerSeedHistory clones, 5 rack tiles, reserveItems list,
     // placedTiles list (+ placedContentMap + placedSnagMap derived from each
@@ -252,7 +253,7 @@ public:
 
     // FUN_100017fb8, push a content tile (TileContent) onto the reserve
     // queue. returns the new tile (binary returns its pointer).
-    TileObject* pushReserveTile(uint32_t contentType, uint32_t colorParam);
+    TileObject* pushReserveTile(uint32_t contentType, int32_t drawCountdown);
 
     // FUN_10001809c, push a snag tile (SnagContent) onto the reserve queue.
     // returns the just-allocated SnagContent (binary tail-calls
@@ -261,7 +262,7 @@ public:
     // displayed atk / def / hp (e.g. FUN_100025dcc cases 0x1b / 0x4c / 0x5d)
     // capture the return; cases that just want to drop a tile in the
     // reserve queue discard it.
-    class SnagContent* pushReserveSnagTile(uint32_t kind, uint32_t colorParam);
+    class SnagContent* pushReserveSnagTile(uint32_t kind, int32_t drawCountdown);
 
     // FUN_100017f28, seed pickupSnagThreshold from levelTurnCount * scale + RNG.
     // called by initLevelContent and rollRackTile (when the reserve is empty
@@ -678,7 +679,7 @@ public:
     void applyChainStatBumpsToRack(float dt);
 
     // placeExitAndKeys, FUN_1000175f0's body. writes the level-exit grid
-    // position (exitCol/exitRow), adds the exit cell (kind 1) + its 6 hex
+    // position (exitGridCol/exitGridRow), adds the exit cell (kind 1) + its 6 hex
     // neighbors as key cells (kind 2) to the hex map, and configures the
     // exitTileIcon Quad's UV / size / position. shared by initLevel (which
     // rolls a fresh (col, row)) and restoreFromSnapshot (which passes the
@@ -695,7 +696,7 @@ public:
     void setExitKeysRequired(int requestedCount);
 
     // recomputeExitKeysCollected, FUN_1000178fc. counts page-list tiles
-    // at hex distance 1 from (exitCol, exitRow) into keysCollected, then
+    // at hex distance 1 from (exitGridCol, exitGridRow) into keysCollected, then
     // re-seeds each exitLockIcons[i] UV (filled if i < keysCollected,
     // hollow otherwise) and flips exitTileIcon UV between locked /
     // unlocked. when collected just reached required this turn, fires
@@ -1153,16 +1154,16 @@ public:
     // can place a tile that connects to the exit; before then, the rules
     // engine paints those placements red.
     //
-    // historically labeled exitCol/exitRow because Phase C will
+    // historically labeled exitGridCol/exitGridRow because Phase C will
     // show a character avatar walking from the start tile to the exit;
     // the binary's gameplay treats this slot as the exit position, not
     // the character's instantaneous position. TODO: rename to
     // exitGridCol/exitGridRow once the avatar-walk port confirms it
     // doesn't update this slot.
-    int32_t exitCol;             // (semantic: exit/level-end col)
-    int32_t exitRow;             // (semantic: exit/level-end row)
+    int32_t exitGridCol;             // (semantic: exit/level-end col)
+    int32_t exitGridRow;             // (semantic: exit/level-end row)
 
-    // visible Exit tile. the HexMap cell at (exitCol, exitRow) is added
+    // visible Exit tile. the HexMap cell at (exitGridCol, exitGridRow) is added
     // with kind=1 but explicitly uses zero UV (invisible); the player
     // sees the exit through this quad. its UV flips: "locked" art while
     // keysCollected < keysRequired, "unlocked" art the first time the
