@@ -55,7 +55,7 @@ inline const std::vector<std::vector<std::string>>& table() {
         {"Sometimes I come back here", "and do everything differently,", "but the outcome's always the same"},  // 38
         {"Sometimes I'm in the machine,", "and I know it's what I've wanted,", "even as it swallows me up"},  // 39
         {"Sometimes I stay the same,", "and it takes all of my effort", "to manage that"},  // 40
-        {"Sometimes time is strage,", "and when I look back", "I notice how much of it there is"},  // 41
+        {"Sometimes time is strange,", "and when I look back", "I notice how much of it there is"},  // 41
         {"Sometimes I'm building a tower,", "but I know I'll get bored", "long before it's done"},  // 42
         {"Sometimes I'm inside a clock,", "and I'm just trying to take it back,", "take it all back"},  // 43
         {"Sometimes I'm a ghost,", "and I pass silently through walls,", "unseen and unwelcome"},  // 44
