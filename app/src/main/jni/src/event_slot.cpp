@@ -157,7 +157,7 @@ void EventSlot::draw() {
 // FUN_100029dc8, EventSlot::tickAnimation.
 // per-frame internal animation tick. drives two independent animations:
 //
-// 1. hoverState (slot+0x7AC): lerps 0..1 based on awaitingTileSelection.
+// 1. hoverState: lerps 0..1 based on awaitingTileSelection.
 //    when set (panel open in this Event's name): += dt / +0.1s.
 //    when clear (panel closed / no selection):   += dt / -0.1s (decay).
 //    used by draw() to bob the whole slot upward by hoverState * 1/64.

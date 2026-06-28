@@ -4,13 +4,13 @@
 // (PTR_DAT_1000746b0). 3 styles, 12 glyphs per style, 0x1C bytes per glyph.
 //
 // each glyph entry in the binary is laid out as:
-//   +0x00: float uvMinX   (pixels in the 1024x1024 source texture)
-//   +0x04: float uvMinY
-//   +0x08: float width    (display pixels)
-//   +0x0C: float height
-//   +0x10: int   kernLeft
-//   +0x14: int   kernRight
-//   +0x18: int   xOffset
+// float uvMinX   (pixels in the 1024x1024 source texture)
+// float uvMinY
+// float width    (display pixels)
+// float height
+// int   kernLeft
+// int   kernRight
+// int   xOffset
 //
 // the rendering code (FUN_10003c25c) reads kern/offset fields with a float-to-int
 // cast; on arm64 FCVTZS of denormals/NaN yields 0, so the actual stored bit

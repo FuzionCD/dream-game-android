@@ -21,11 +21,9 @@ void Label::init() {
     cachedSize0       = 0.0f;
     cachedSize1       = 0.0f;
     widthValid        = false;
-    pad89[0] = pad89[1] = pad89[2] = 0;
     leftX             = 0.0f;
     topY              = 0.0f;
     mirrored          = false;
-    pad95[0] = pad95[1] = pad95[2] = 0;
 }
 
 // FUN_10004c058, Label widget dtor.
@@ -321,7 +319,7 @@ void Label::setSize(float width, float height) {
 // Ghidra's decomp shows a `param_2` carry-forward (param_2 = previous
 // glyph's naturalWidth). that's a decomp artifact: the s1 register is the
 // heightTotal return from measureGlyphRun, not a phantom carry. asm at
-// 0x10004c1f8 (bl 0x10004c658) returns (s0, s1); 0x10004c240 (fsub s0, s10,
+// (bl 0x10004c658) returns (s0, s1); 0x10004c240 (fsub s0, s10,
 // s1) uses s1 directly as heightTotal. param_2's "reassignment" inside the
 // loop is just the C variable being reused as naturalWidth, never read as a
 // height carry.
@@ -360,8 +358,7 @@ void Label::layoutGlyphs(float /*widthInput*/, float /*heightInput*/) {
 
         // natural width/height come from the glyph's UV-span (vertices[3].u -
         // vertices[0].u and vertices[3].v - vertices[0].v). the binary reads
-        // offsets +0x50 / +0x14 / +0x54 / +0x18, which are the v3.u/v0.u/v3.v/v0.v
-        // fields, not the second vertex block.
+        // the v3.u/v0.u/v3.v/v0.v fields, not the second vertex block.
         float vT = q.vertices[3].v - q.vertices[0].v;
         float naturalHeight = (vT * scale) / DENOM;
         float oh = overrideHeights[i];

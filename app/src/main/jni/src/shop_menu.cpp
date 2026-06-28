@@ -89,8 +89,8 @@ void Shop::seedPools() {
 
 // FUN_1000502d4, Shop::init.
 //
-// big chrome-construction function. called once from Game::create at
-// `bl 0x100051e1c` (FUN_1000437a4 +0x880). orchestrates:
+// big chrome-construction function. called once from Game::create.
+// functions:
 //   1. zero the 3 visibility flags
 //   2. init the header Label + the 3 rowFrame Labels (each owns 3 TextItems)
 //   3. seed the pool sets
@@ -809,8 +809,8 @@ void Shop::draw() {
     // ---- per-row priceQuad / unlockedQuad selection ----
     //
     // affordability check: keysBackup >= (rowIndex + 1) and pool is
-    // non-empty (binary reads pool.end_node.__left at +0x3968/+0x3980/
-    // +0x3998 to test emptiness, equivalent to !pool.empty()).
+    // non-empty (binary reads each pool's end_node.__left to test
+    // emptiness, equivalent to !pool.empty()).
     {
         const bool faceAvailable  = keysBackup >= 1 && !facePool.empty();
         const bool snagAvailable  = keysBackup >= 2 && !snagPool.empty();
@@ -1339,7 +1339,7 @@ void Shop::update(float dt, float /*param2*/) {
 
                     if (seg == 2) {
                         // arc p1 -> p2 (rounded corner). binary @
-                        // 0x100053198: polar2rect(p1.X - p2.X, local*PI/2)
+                        // polar2rect(p1.X - p2.X, local*PI/2)
                         //   point.X = p2.X + dx*cos(local*PI/2)
                         //   point.Y = p1.Y + dx*sin(local*PI/2)
                         // where dx = p1.X - p2.X (= prevX - currX).
@@ -1350,7 +1350,7 @@ void Shop::update(float dt, float /*param2*/) {
                     }
                     else if (seg == 4) {
                         // arc p3 -> p4 (rounded corner). binary @
-                        // 0x10005320c: polar2rect(p4.X - p3.X, (1-local)*PI/2)
+                        // polar2rect(p4.X - p3.X, (1-local)*PI/2)
                         //   point.X = p3.X + dx*cos((1-local)*PI/2)
                         //   point.Y = p4.Y + dx*sin((1-local)*PI/2)
                         // where dx = p4.X - p3.X (= currX - prevX).
@@ -1393,7 +1393,7 @@ void Shop::update(float dt, float /*param2*/) {
         }
         else if (animTimers[2] < 1.0f) {
             // STAGE 2: animQuad[4] vertical drift. binary @
-            // 0x100052d4c..0x100052e27. animTimers[1] is the delay
+            // animTimers[1] is the delay
             // before stage 2 starts; once expired, animTimers[2]
             // smoothsteps 0..1 at dt/0.1 per frame. the only thing animated
             // is animQuads[4].posY (small upward drift via sigmoid).
@@ -1503,8 +1503,8 @@ void Shop::update(float dt, float /*param2*/) {
                     // name overlay: snag-themed reddish palette. anchor
                     // = (animQuads[1].pos + (0, DAT_10005a660=0.09375)),
                     // fontScale = DAT_10005a698 = 0.05. binary builds
-                    // primary byte-by-byte at sp+0x98 (= 0xff0014b4);
-                    // outline at sp+0x90 (= 0xff003ce6).
+                    // primary color byte-by-byte (= 0xff0014b4);
+                    // outline (= 0xff003ce6).
                     unlockNameOverlay.startText(
                         0.05f,
                         info.name,
@@ -1680,8 +1680,8 @@ void Shop::update(float dt, float /*param2*/) {
                     // capture current avatar position. binary reads from
                     // heapPreview->mainQuad.quad.posX/Y when an event
                     // unlock has spawned one, else from unlockAvatarQuad.
-                    // EventSlot+0xB8 = mainQuad.quad start; the binary
-                    // dereferences as a packed (posX, posY) u64.
+                    // mainQuad.quad's start is a packed (posX, posY) u64
+                    // the binary dereferences directly.
                     float sx, sy;
 
                     if (heapPreview) {

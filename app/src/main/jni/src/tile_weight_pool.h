@@ -18,14 +18,12 @@
 // via FUN_10004cfec. typeIds map to content kinds returned by rollRackTile:
 //   (2, 30) DEF   (3, 30) ATK   (6, 10) HP   (5, 15) CTRL   (1, 15) snag
 struct TileWeightEntry {
-    int32_t typeId;         // +0x0 - value returned by weightedRollTileType (content type)
-    int32_t baseWeight;     // +0x4 - per-loss weight increment, and floor on win
-    int32_t currentWeight;  // +0x8 - probability mass at the current roll
+    int32_t typeId;         // - value returned by weightedRollTileType (content type)
+    int32_t baseWeight;     // - per-loss weight increment, and floor on win
+    int32_t currentWeight;  // - probability mass at the current roll
 };
-static_assert(sizeof(TileWeightEntry) == 0xC,
-              "TileWeightEntry must be exactly 12 bytes (binary stride 0xC)");
 
-// std::vector<TileWeightEntry> at GameBoard+0x9688. the binary uses libc++
+// std::vector<TileWeightEntry> at GameBoard.tileWeightPool. the binary uses libc++
 // aarch64's std::vector here; its three-pointer (begin/end/cap) layout is
 // exactly 0x18 bytes and lines up 1:1 with FUN_10004cfe0 / FUN_10004cfec /
 // FUN_10004d388. we use the real type so push_back / assign / capacity growth
@@ -43,13 +41,10 @@ static_assert(sizeof(TileWeightEntry) == 0xC,
 //                                      weightedRollTileType below)
 //   assign from src  : FUN_10004d26c  (called from the saved-game load
 //                                      path FUN_100016b18 with src =
-//                                      GameSnapshot+0x340; std::vector::assign)
+//                                      GameSnapshot.tileWeightPool; std::vector::assign)
 //   grow + push      : FUN_10004d388  (vector reserve+move helper; handled by
 //                                      libstdc++)
 using TileWeightPool = std::vector<TileWeightEntry>;
-
-static_assert(sizeof(TileWeightPool) == 0x18,
-              "TileWeightPool must be 0x18 bytes (libc++ vector = 3 pointers)");
 
 // FUN_10004d198 - reset every entry's currentWeight back to baseWeight.
 inline void resetTileWeightsToBase(TileWeightPool& pool) {

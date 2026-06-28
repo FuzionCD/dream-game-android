@@ -150,7 +150,7 @@ void Menu::setSizeAndCenterY(float panelWidth, float panelHeight) {
 //
 // opens the panel: shows it, rewinds the fade timer, clears the tap-commit
 // state, whitens confirmButton, and plays sound 8 (panel open whoosh).
-// readyByte + confirmPressed are one ushort write at +0x418..+0x419.
+// readyByte + confirmPressed are one ushort write.
 void Menu::panelShow() {
     visible          = true;
     secondaryVisible = true;
@@ -181,8 +181,8 @@ void Menu::panelHide(bool justClearVisible) {
     secondaryVisible = false;
     animTimer0       = 0.0f;
     readyByte        = false;
-    // confirmPressed (+0x419) deliberately not cleared here; binary writes
-    // one byte at +0x418 only. matters when a tap is in flight at close time;
+    // confirmPressed deliberately not cleared here; binary writes
+    // one byte (readyByte) only. matters when a tap is in flight at close time;
     // subsequent baseUpdate gates on readyByte first so the stale
     // confirmPressed is harmless until next panelShow rewinds it.
 

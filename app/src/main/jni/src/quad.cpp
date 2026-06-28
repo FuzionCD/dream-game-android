@@ -268,7 +268,6 @@ void Quad::draw() {
     }
 }
 
-
 // FUN_1000083bc, bbox hit-test for input dispatch. returns true when (x, y)
 // lies within the Quad's display bounding box, computed as the two diagonal
 // corners (vertex[0], vertex[3]) translated by posX/posY and scaled by

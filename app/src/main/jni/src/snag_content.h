@@ -16,10 +16,10 @@
 //                    worldIndex; output drives the per-kind multipliers)
 //   stat displays:  FUN_10003d3a4 (atk display), FUN_10003d468 (def display),
 //                    FUN_10003d530 (hp display)
-//   getValues:      FUN_10003e438 (reads +0x134 type into output)
+//   getValues:      FUN_10003e438 (reads type into output)
 //
 // SnagContent is the 0x498-byte object that holds an enemy snag's fight state,
-// owned by TileObject at +0x208. the recognisable atk / def / hp 3-stat
+// owned by TileObject. the recognisable atk / def / hp 3-stat
 // fight-card pattern lives here: 3 TileIcons (one quad per stat) + 3 ColorTints
 // (each rendering its stat as digits via the bitmap font).
 //
@@ -64,9 +64,9 @@ public:
     // snag bestiary table, run player-progress-driven stat scaling, run the
     // per-kind switch for the special-cased kinds, register stat displays.
     //
-    // `tileObj` is the owning TileObject (back-ref stored at +0x480).
-    // `totalTurnCount` (= GameBoard+0x20) / `levelTurnCount` (+0x40) /
-    // `worldIndex` (+0x8) feed the stat-scaling formula (FUN_10003d244).
+    // `tileObj` is the owning TileObject (back-ref stored in tileParent).
+    // `totalTurnCount` (= GameBoard.totalTurnCount) / `levelTurnCount` /
+    // `worldIndex` feed the stat-scaling formula (FUN_10003d244).
     void init(SnagKind kind, TileObject* tileObj, PlayerSystem* player,
               int levelTurnCount, int pickupsFound, int worldIndex);
 
@@ -86,8 +86,8 @@ public:
     // saved-game restore path (FUN_100016b18 -> FUN_100013f04) calls it with
     // the values captured at save time.
     //
-    // extra0 / extra1 are the per-kind scratch values written to +0x490 /
-    // +0x494: Obsession uses both (0x64 / 2); Reluctance uses extra0 (2);
+    // extra0 / extra1 are the per-kind scratch values: Obsession uses both
+    // (0x64 / 2); Reluctance uses extra0 (2);
     // Doubt / Despair set consumedFlag = (extra0 == 1). other kinds ignore
     // them. player is needed for the Doppelganger (0x19) portrait pull.
     void initExplicit(uint32_t kind, int hp, int atk, int def,
@@ -122,7 +122,7 @@ public:
 
     // FUN_10003da34 (vtable[3] override), snag-specific per-frame logic on
     // top of MovableActor's 4-stage base body. two extras:
-    //   1. scale478 swap-slide animation tick (Mania visual swap).
+    //   1. atkDefSwapT swap-slide animation tick (Mania visual swap).
     //   2. move-completion reattachment: when targetTile is set AND both
     //      moveT and spawnT are settled, this swaps the snag's tileParent
     //      to targetTile and attaches it to the new tile's snagContent slot
@@ -156,13 +156,12 @@ public:
 
     // FUN_10003de74, kick the snag's move animation toward `target`.
     // pushes (target.posXY, target.gridColRow) onto the move queue, sets
-    // +0x488 = target (the "associated tile" back-ref), and clears the
-    // original parent's snagContent slot so the snag is no longer rendered
-    // by its old tile. when `reparent` is true: also moves the SnagContent*
-    // entry in the trackedContent vector from old parent to target. the
-    // pre-commit page-walk in FUN_100025238 passes reparent=0; the
-    // post-death tail walk passes reparent=0 too (the kill-and-fade after
-    // sweeps the visual).
+    // the associated tile backref, and clears the original parent's snagContent
+    // slot so the snag is no longer rendered by its old tile. when `reparent`
+    // is true: also moves the SnagContent* entry in the trackedContent vector
+    // from old parent to target. the pre-commit page-walk in FUN_100025238
+    // passes reparent=0; the post-death tail walk passes reparent=0 too (the
+    // kill-and-fade after sweeps the visual).
     void sendToward(class TileObject* target, bool reparent);
 
     // FUN_10003ddec, clamped HP-loss helper: hp -= clamp(amount, 0, hp)
@@ -175,7 +174,7 @@ public:
     // FUN_10003e24c, visual ATK/DEF swap on a placed snag. updates atk
     // display to show old def, def display to show old atk, then swaps
     // each ColorTint to the other display's home position and resets
-    // scale478 = 0 to kick the slide animation in vtable[3] update.
+    // atkDefSwapT = 0 to kick the slide animation in vtable[3] update.
     // called by snag 5 (Mania) page-walk effect once per turn.
     void swapAtkDefDisplay();
 
@@ -218,7 +217,7 @@ public:
 
     // FUN_10003df70, absorb `incoming` into this snag. sums atk/def/hp via
     // the display setters; if this is Honesty (type 1) and incoming isn't,
-    // takes on incoming's type, refreshes the sprite, and copies the +0x490
+    // takes on incoming's type, refreshes the sprite, and copies the per-kind
     // scratch (consumedFlag + obsessionCount). Doppelganger absorptions
     // additionally copy incoming's full baseQuad visual state so the
     // surviving snag becomes a visual clone. caller still owns incoming and
@@ -227,44 +226,39 @@ public:
     // the binary's FUN_10004e2c0 placement before this body).
     void mergeFrom(SnagContent& incoming);
 
-    // ---- SnagContent-specific (0x134..0x497; comes after MovableActor) ----
-    int       type;                // +0x134
-    int       spriteTextureIdx;    // +0x138  (texture used for baseQuad, set
+    // ---- SnagContent-specific fields (come after MovableActor) ----
+    int       type;
+    int       spriteTextureIdx;    // (texture used for baseQuad, set
                                    //          by FUN_10003dedc to 8 for the
                                    //          Doppelganger, 10 for all other
                                    //          snags. consumed by SnagContent's
                                    //          vtable[8] draw FUN_10003d9a8.)
-    int       hp;                  // +0x13C
-    int       atk;                 // +0x140
-    int       def;                 // +0x144
-    // sub-Quad order in the binary is HP / ATK / DEF (read FUN_10003d3a4 / 468 /
-    // 530: atk uses sub-Quad at +0x220, def at +0x2F8, hp at +0x148). same shuffle
-    // for the 3 ColorTints. naming the fields by what they actually hold keeps
-    // the stat-display setters straightforward.
-    TileIcon  hpDisplay;           // +0x148..+0x21F
-    TileIcon  atkDisplay;          // +0x220..+0x2F7
-    TileIcon  defDisplay;          // +0x2F8..+0x3CF
-    ColorTint hpTint;              // +0x3D0..+0x407   (color 0xff64ffff yellow)
-    ColorTint atkTint;             // +0x408..+0x43F   (color 0xffc8ffff light yellow)
-    ColorTint defTint;             // +0x440..+0x477   (color 0xffffe6c8 light blue)
-    float     scale478;            // +0x478
-    uint8_t   pad47C[4];           // +0x47C..+0x47F
-    TileObject*     tileParent;    // +0x480
-    // +0x488: "associated tile" back-ref. distinct from tileParent: this
+    int       hp;
+    int       atk;
+    int       def;
+    // sub-Quad order in the binary is HP / ATK / DEF (read by FUN_10003d3a4 /
+    // 468 / 530, the atk / def / hp display setters). same shuffle for the 3
+    // ColorTints. naming the fields by what they actually hold keeps the
+    // stat-display setters straightforward.
+    TileIcon  hpDisplay;
+    TileIcon  atkDisplay;
+    TileIcon  defDisplay;
+    ColorTint hpTint;              // (color 0xff64ffff yellow)
+    ColorTint atkTint;             // (color 0xffc8ffff light yellow)
+    ColorTint defTint;             // (color 0xffffe6c8 light blue)
+    float     atkDefSwapT;            // Mania ATK/DEF tint-swap animation progress (0..1; 1 = settled)
+    TileObject*     tileParent;
+    // "associated tile" back-ref. distinct from tileParent: this
     // is the target tile of an in-flight move animation (set by sendToward).
     // tileParent stays at the snag's current owner; targetTile is where the
     // snag is walking toward.
-    TileObject*     targetTile;    // +0x488
-    // +0x490: per-snag-type scratch byte. Doubt/Despair use 1-byte writes
+    TileObject*     targetTile;
+    // per-snag-type scratch byte. Doubt/Despair use 1-byte writes
     // (0/1); Reluctance writes 2 via a 4-byte cast; Obsession seeds 0x64
-    // via an 8-byte combined store that also writes obsessionCount at
-    // +0x494. all observed values fit in a byte. existing port call sites
+    // via an 8-byte combined store that also writes obsessionCount.
+    // all observed values fit in a byte. existing port call sites
     // read it as bool (truthy/falsy) which works because non-zero always
     // means "consumed."
-    uint8_t   consumedFlag;        // +0x490
-    uint8_t   pad491[3];           // +0x491..+0x493  (3-byte gap before next int)
-    int32_t   obsessionCount;      // +0x494          (only used by Obsession)
+    uint8_t   consumedFlag;
+    int32_t   obsessionCount;      // (only used by Obsession)
 };
-
-static_assert(sizeof(SnagContent) == 0x498,
-              "SnagContent must be exactly 0x498 bytes");

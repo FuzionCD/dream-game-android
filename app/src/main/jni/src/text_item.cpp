@@ -7,7 +7,7 @@
 namespace {
 
 // inline-tag UV/size constants. extracted from the iOS binary's __TEXT,__const
-// at 0x10005a138..+0x164 (12 floats), consumed by FUN_10002fe60 (parseInlineTag)
+// at 0x10005a138..0x10005a29c (12 floats), consumed by FUN_10002fe60 (parseInlineTag)
 // + FUN_100030204 (emitInlineIcon). values are pixel coordinates on the bitmap
 // font sheet; converted to UV via TEXT_PIXEL_UV_SCALE during glyph placement.
 //
@@ -22,29 +22,29 @@ namespace {
 //   {D} = (287, 0)..(287+44, 0+46)   = DEF glyph
 //   {H} = (235, 0)..(235+50, 0+46)   = HP glyph
 //   {X} = (487, 20)..(487+38, 20+47) = XP glyph
-constexpr float TAG_X_UV_U            = 487.0f;        // 0x10005a138
-constexpr float TAG_X_UV_WIDTH        = 38.0f;         // 0x10005a13c
-constexpr float TAG_X_UV_HEIGHT       = 47.0f;         // 0x10005a140
-constexpr float TAG_C_UV_U            = 440.0f;        // 0x10005a144
-constexpr float TAG_DEFAULT_UV_SIZE   = 46.0f;         // 0x10005a148
+constexpr float TAG_X_UV_U            = 487.0f;
+constexpr float TAG_X_UV_WIDTH        = 38.0f;
+constexpr float TAG_X_UV_HEIGHT       = 47.0f;
+constexpr float TAG_C_UV_U            = 440.0f;
+constexpr float TAG_DEFAULT_UV_SIZE   = 46.0f;
                                                        //   (uvHeight for A/C/D/H,
                                                        //    also uvWidth for C)
-constexpr float TAG_H_UV_U            = 235.0f;        // 0x10005a14c
-constexpr float TAG_H_UV_WIDTH        = 50.0f;         // 0x10005a150
-constexpr float TAG_D_UV_U            = 287.0f;        // 0x10005a154
-constexpr float TAG_D_UV_WIDTH        = 44.0f;         // 0x10005a158
-constexpr float TAG_A_UV_U            = 186.0f;        // 0x10005a15c
-constexpr float TAG_A_UV_WIDTH        = 48.0f;         // 0x10005a160
-constexpr float TAG_ADVANCE_DIVISOR   = 640.0f;        // 0x10005a164
+constexpr float TAG_H_UV_U            = 235.0f;
+constexpr float TAG_H_UV_WIDTH        = 50.0f;
+constexpr float TAG_D_UV_U            = 287.0f;
+constexpr float TAG_D_UV_WIDTH        = 44.0f;
+constexpr float TAG_A_UV_U            = 186.0f;
+constexpr float TAG_A_UV_WIDTH        = 48.0f;
+constexpr float TAG_ADVANCE_DIVISOR   = 640.0f;
 
 // FUN_100014d84 helper constants, pixel-to-UV / pixel-to-display scaling.
 // the bitmap font atlas is 1024 wide; the display reference width is 640.
-constexpr float TEXT_PIXEL_UV_SCALE   = 0.0009765625f; // 0x100059ebc  (= 1/1024)
-constexpr float TEXT_PIXEL_SIZE_SCALE = 640.0f;        // 0x100059ec0
+constexpr float TEXT_PIXEL_UV_SCALE   = 0.0009765625f; // (= 1/1024)
+constexpr float TEXT_PIXEL_SIZE_SCALE = 640.0f;
 
 // emit a single inline-icon glyph into the TextItem at the next outline-tail
 // slot. port of FUN_100030204:
-//   - bump outline-tail count at +0x50
+//   - bump outline-tail count (outlineGlyphCount)
 //   - compute slot index = vec.size - new outlineCount  (icons land at the
 //     end of the glyph vector, draw()'s outline pass walks them in reverse)
 //   - bump cursor by half-advance (centers the glyph)
@@ -143,20 +143,20 @@ void parseInlineTag(TextItem* item, const char* tagStart, float* cursorX) {
 }  // anonymous namespace
 
 // FUN_10002fa08, basic init. the binary memsets bytes 0..0x5F, then sets:
-//   scaleX = scaleY = 1.0  (+0x68)
-//   rotation = 0, rgba = white  (+0x70)
-//   renderedWidth = 0  (+0x78, 4 bytes only)
-//   spaceMultiplier = 2.0  (+0x80)
+//   scaleX = scaleY = 1.0
+//   rotation = 0, rgba = white
+//   renderedWidth = 0  (4 bytes only)
+//   spaceMultiplier = 2.0
 //
 // fields the binary leaves untouched:
-//   posX (+0x60), posY (+0x64), maxCharHeight (+0x7C), pad84 (+0x84..+0x87).
+//   posX, posY, maxCharHeight, and the trailing padding bytes.
 //   panels are responsible for setting posX/posY before draw(); maxCharHeight
 //   gets reset to 0 on every setString call.
 //
-// in C++, the std::string + std::vector members at +0x00..+0x48 are already
+// in C++, the std::string + std::vector members are already
 // in their empty-valid state via their default constructors; no memset needed
 // (and writing memset over them would corrupt their internal control blocks).
-// the trailing scalars at +0x48..+0x5F that the binary's memset clears are
+// the trailing scalars that the binary's memset clears are
 // explicitly zeroed below.
 void TextItem::init() {
     // bytes 0x48..0x5F (matches binary memset of 0x60 stopping after these):
@@ -176,17 +176,17 @@ void TextItem::init() {
     // panel's overall init pattern.
 }
 
-// FUN_10002fa50, same as init() but stores the glyph table at +0x58. the
-// binary memsets bytes 0..0x57 only, then sets:
-//   glyphTablePtr = param_2  (+0x58)
-//   scaleX = scaleY = 1.0  (+0x68)
-//   rotation = 0, rgba = white  (+0x70)
-//   renderedWidth = maxCharHeight = 0  (+0x78, 8-byte store clears both)
-//   spaceMultiplier = 2.0  (+0x80)
+// FUN_10002fa50, same as init() but stores the glyph table in glyphTablePtr.
+// the binary memsets bytes 0..0x57 only, then sets:
+//   glyphTablePtr = param_2
+//   scaleX = scaleY = 1.0
+//   rotation = 0, rgba = white
+//   renderedWidth = maxCharHeight = 0  (8-byte store clears both)
+//   spaceMultiplier = 2.0
 //
 // difference from init(): glyphTablePtr is set explicitly (not zeroed) and
-// maxCharHeight is zeroed (the 8-byte store at +0x78). posX/posY/pad84 still
-// left untouched.
+// maxCharHeight is zeroed (the 8-byte store). posX/posY and the trailing
+// padding still left untouched.
 void TextItem::init(const BMFontTable* glyphTable) {
     glyphCount        = 0;
     outlineGlyphCount = 0;
@@ -219,7 +219,7 @@ void TextItem::setString(const char* s, int len) {
     size_t sLen = (len < 0) ? std::strlen(s) : (size_t)len;
 
     // 3. grow glyph vector to at least sLen elements. each new element is
-    // a default-constructed TileIcon (Quad ctor + 0x10 zero bytes).
+    // a default-constructed TileIcon (a Quad plus 0x10 zero bytes).
     if (glyphVec.size() < sLen) {
         size_t prevCount = glyphVec.size();
         glyphVec.resize(sLen);

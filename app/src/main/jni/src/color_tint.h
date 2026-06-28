@@ -19,20 +19,17 @@
 // out horizontally. drawing pushes a translation/scale matrix and calls draw on
 // each digit via vtable.
 //
-// total size: 0x38 bytes (verified by static_assert below).
-//
-// struct layout (matches the binary's writes in FUN_10003c070):
-//   +0x00: vector<TileIcon*>::begin    (8 bytes, raw pointer)
-//   +0x08: vector<TileIcon*>::end      (8 bytes, raw pointer)
-//   +0x10: vector<TileIcon*>::cap      (8 bytes, raw pointer)
-//   +0x18: posX                        (4 bytes)
-//   +0x1C: posY                        (4 bytes)
-//   +0x20: rgba color (R, G, B, A)     (4 bytes)
-//   +0x24: anchorX                     (4 bytes, used for pixel-snap layout)
-//   +0x28: anchorY                     (4 bytes)
-//   +0x2C: scaleX                      (4 bytes, init 1.0)
-//   +0x30: scaleY                      (4 bytes, init 1.0)
-//   +0x34: padding                     (4 bytes, unused by init)
+// struct layout:
+// vector<TileIcon*>::begin    (8 bytes, raw pointer)
+// vector<TileIcon*>::end      (8 bytes, raw pointer)
+// vector<TileIcon*>::cap      (8 bytes, raw pointer)
+// posX                        (4 bytes)
+// posY                        (4 bytes)
+// rgba color (R, G, B, A)     (4 bytes)
+// anchorX                     (4 bytes, used for pixel-snap layout)
+// anchorY                     (4 bytes)
+// scaleX                      (4 bytes, init 1.0)
+// scaleY                      (4 bytes, init 1.0)
 
 struct TileIcon;
 
@@ -84,18 +81,10 @@ private:
                       int positionMode);
 
 public:
-    // libc++ std::vector<T*> on aarch64 = 3 pointers (begin, end, end_cap) =
-    // 24 bytes, byte-for-byte identical to the binary's manual triple. using
-    // std::vector lets the implicit ctor zero the pointers (the crash-prevention
-    // init that an embedded ColorTint needs) and removes the hand-rolled
-    // malloc/free pair from layoutDigits/freeDigitVector.
-    std::vector<TileIcon*> digits;   // +0x00..+0x17  (begin/end/end_cap)
-    float    posX, posY;             // +0x18, +0x1C
-    uint8_t  colorR, colorG;         // +0x20, +0x21
-    uint8_t  colorB, colorA;         // +0x22, +0x23
-    float    anchorX, anchorY;       // +0x24, +0x28
-    float    scaleX, scaleY;         // +0x2C, +0x30
-    uint32_t pad34;                  // +0x34
+    std::vector<TileIcon*> digits;
+    float    posX, posY;
+    uint8_t  colorR, colorG;
+    uint8_t  colorB, colorA;
+    float    anchorX, anchorY;
+    float    scaleX, scaleY;
 };
-
-static_assert(sizeof(ColorTint) == 0x38, "ColorTint must be exactly 0x38 (56) bytes to match binary");

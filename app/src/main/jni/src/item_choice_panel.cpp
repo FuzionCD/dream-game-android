@@ -26,7 +26,7 @@ extern float snapMenuPixel(float v);
 //      coordinates; per-slot Y stride = (slotIdx * 126px) / 640.
 //   5. set up heldDividerQuad UVs (atlas (231.875..277.5, 455.0..590.0))
 //      and addVertexOffset (0, -0.028).
-//   6. wire TextItem glyph tables to game's panel font (Game+0x10) and
+//   6. wire TextItem glyph tables to game's panel font (Game.bmfontTables_) and
 //      set scales: candidateNameText = 0.085, descText = 0.07.
 //
 // binary constants (DAT_10005a180..194):
@@ -76,8 +76,7 @@ void ItemChoicePanel::init(DetailPanel* heldItemRefIn) {
     constexpr float SLOT_Y_STRIDE_PX  = 126.0f;       // per-slot pixel stride
 
     // TextItem-internal scale floats: candidateNameText = 0.085,
-    // descText[0..1] = 0.07. these go directly into TextItem+0x68 / +0x6C
-    // (= scaleX, scaleY).
+    // descText[0..1] = 0.07. these go directly into TextItem.scaleX / scaleY.
     constexpr float NAME_SCALE = 0.085f;
     constexpr float DESC_SCALE = 0.07f;
 
@@ -231,7 +230,7 @@ void ItemChoicePanel::init(DetailPanel* heldItemRefIn) {
         slot.candidateBgLabel.setPosition(candLeft, candY);
 
         // ---- (6) TextItem glyph tables + scales ----
-        // candidateNameText uses the panel font (game+0x10), large scale 0.085.
+        // candidateNameText uses the panel font, large scale 0.085.
         slot.candidateNameText.glyphTablePtr = g->bmfontTablePtr(0);
         slot.candidateNameText.scaleX = NAME_SCALE;
         slot.candidateNameText.scaleY = NAME_SCALE;
@@ -605,7 +604,7 @@ void ItemChoicePanel::open(PlayerSystem* playerSystem) {
     Game* g = getGame();
 
     if (g) {
-        g->soundQueue.trigger(0x0A);   // FUN_100035ccc(g+0x3880, 10) = menuItemsAppear
+        g->soundQueue.trigger(0x0A);   // FUN_100035ccc(soundQueue, 10) = menuItemsAppear
     }
 
     // dismiss any prior detail-panel tooltip
@@ -639,8 +638,8 @@ void ItemChoicePanel::open(PlayerSystem* playerSystem) {
     constexpr float PANEL_WIDTH        = 0.884375f;     // DAT_1B8
     constexpr float ANCHOR_Y_NON3      = 0.293750f;     // DAT_1C0 (slotCount != 3)
     constexpr float ANCHOR_Y_3SLOT     = 0.359375f;     // DAT_1C4 (slotCount == 3)
-    constexpr float PANEL_H_PER_SLOT   = 126.0f;        // 0x7e
-    constexpr float PANEL_H_CONST_PX   = 69.0f;         // 0x45
+    constexpr float PANEL_H_PER_SLOT   = 126.0f;
+    constexpr float PANEL_H_CONST_PX   = 69.0f;
 
     // ---- per-slot setup ----
     for (int slotIdx = 0; slotIdx < slotCount; ++slotIdx) {
@@ -694,7 +693,7 @@ void ItemChoicePanel::open(PlayerSystem* playerSystem) {
         const float nameWidthBudget = (candLeftX + candWidth)
                                     - slot.candidateNameText.posX
                                     + NAME_WIDTH_BUDGET;
-        // rendered width = renderedWidth (+0x78 of TextItem) * scaleX
+        // rendered width = renderedWidth * scaleX
         const float renderedW = slot.candidateNameText.renderedWidth
                               * slot.candidateNameText.scaleX;
 
@@ -972,11 +971,11 @@ void ItemChoicePanel::close() {
 // tints slot N's text into selected/unselected state. binary packs two
 // uint32 RGBA writes:
 //
-//   candidateNameText (+0x74): pure greyscale
+//   candidateNameText color: pure greyscale
 //     selected   -> (200, 200, 200, 255)  light gray
 //     unselected -> (255, 255, 255, 255)  white
 //
-//   descText[0..1]  (+0x74): faint magenta-tinted (G slightly less than R=B)
+//   descText[0..1]  color: faint magenta-tinted (G slightly less than R=B)
 //     selected   -> (150, 140, 150, 255)
 //     unselected -> (200, 190, 200, 255)
 //

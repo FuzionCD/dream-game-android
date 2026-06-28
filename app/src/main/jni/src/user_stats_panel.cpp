@@ -47,8 +47,8 @@ constexpr float kHeaderTopOffset       = 0.0015625f;  // DAT_100059c98
 constexpr float kStatsLabelDip         = -0.003125f;  // DAT_100059c9c
 
 // per-entry icon types from the ctor's i==0/1/2 dispatch. confirmed
-// against PlayerSystem field reads in open(): entry 0 = ATK (+0x14C),
-// entry 1 = HP (+0x154), entry 2 = DEF (+0x150). TileContent type IDs:
+// against PlayerSystem field reads in open(): entry 0 = ATK (baseATK),
+// entry 1 = HP (baseHP), entry 2 = DEF (baseDEF). TileContent type IDs:
 //   2 = ATK, 6 = HP, 3 = DEF (per project_dream_tile_properties memory).
 constexpr uint32_t kEntryIconType_ATK = 2;
 constexpr uint32_t kEntryIconType_HP  = 6;
@@ -175,7 +175,7 @@ void UserStatsPanel::init(DetailPanel* detailPanelPtr) {
     visible    = false;
     detailPanel = detailPanelPtr;
 
-    // ---- backdrop quad init (bgQuad at +0x20) ----
+    // ---- backdrop quad init (bgQuad) ----
     bgQuad = Quad();
     headerLabel.init();
 
@@ -192,7 +192,7 @@ void UserStatsPanel::init(DetailPanel* detailPanelPtr) {
 
     statsChromeLabel.init();
 
-    // FUN_10002fa50, TextItem init with the panel-font glyph table (game+0x10).
+    // FUN_10002fa50, TextItem init with the panel-font glyph table.
     Game* g = getGame();
     const BMFontTable* panelFont = g ? g->bmfontTablePtr(0) : nullptr;
     statsText.init(panelFont);
@@ -306,7 +306,7 @@ void UserStatsPanel::init(DetailPanel* detailPanelPtr) {
 
     // ---- bottom-stats Label + TextItem ----
     // statsChromeLabel sits below entry-0's descFrame, not chromeFrame.
-    // binary at FUN_100009a00 line 100009ee8 uses panel+0x4B0 = descFrame.
+    // binary at FUN_100009a00 line 100009ee8 reads descFrame.
     addNineSliceFrame(&statsChromeLabel);
     statsChromeLabel.setSize(kStatsChromeWidth, kEntryNudgeY);
     {
@@ -358,9 +358,9 @@ void UserStatsPanel::open(PlayerSystem& playerSystem,
     playerSystemPtr = &playerSystem;
 
     // entry-row populate. binary reads three stat indices from playerSystem:
-    //   entry 0: baseATK   (+0x14c) + statRanges[0] (+0x158/+0x15c) + baseItems[0] (+0x170)
-    //   entry 1: baseHP    (+0x154) + statRanges[2] (+0x168/+0x16c) + baseItems[1] (+0x178)
-    //   entry 2: baseDEF   (+0x150) + statRanges[1] (+0x160/+0x164) + baseItems[2] (+0x180)
+    //   entry 0: baseATK + statRanges[0] + baseItems[0]
+    //   entry 1: baseHP  + statRanges[2] + baseItems[1]
+    //   entry 2: baseDEF + statRanges[1] + baseItems[2]
     // statRanges[] is laid out [ATK, DEF, HP] and the panel walks it
     // out-of-order to match the [ATK, HP, DEF] entry row order.
     struct EntryBinding {
@@ -487,7 +487,7 @@ void UserStatsPanel::open(PlayerSystem& playerSystem,
     }
 
     // ---- bottom-stats sprintf ----
-    // binary reads worldStatsBlock at offsets +0x4, +0x10, +0x14:
+    // binary reads worldStatsBlock at indices 1, 4, 5:
     //   block[1]  = worldLevelIndex     ("World" label, despite name)
     //   block[4]  = levelsGained         ("Level")
     //   block[5]  = itemsFound           ("Items")

@@ -16,7 +16,7 @@
 //
 // binary's typeinfo: this is the `Menu` base class with siblings `MenuLevel`,
 // `MenuSettings`, `MenuItems`, `MenuForfeit`. each subclass owns its own
-// content area at +0x420 onward; the 0x420-byte Menu header owns the shared
+// content area; the 0x420-byte Menu header owns the shared
 // chrome and fade state.
 //
 // virtual hooks (vtable[3..5] in binary):
@@ -100,51 +100,43 @@ public:
 
     // ---- byte-exact field layout (Menu == 0x420 bytes) ----
     //
-    // vtable pointer at +0x000 (8 bytes, implicit from virtual methods,
+    // vtable pointer (8 bytes, implicit from virtual methods,
     // matches the binary's vtable field).
 
-    bool         visible;          // +0x008  =1 while panel is on screen
-    uint8_t      pad009[3];        // +0x009..+0x00B
-    float        anchorX;          // +0x00C  panel screen position X (glTranslatef)
-    float        anchorY;          // +0x010  panel screen position Y
-    bool         secondaryVisible; // +0x014  fade direction (1 = open/opening,
+    bool         visible;          // =1 while panel is on screen
+    float        anchorX;          // panel screen position X (glTranslatef)
+    float        anchorY;          // panel screen position Y
+    bool         secondaryVisible; // fade direction (1 = open/opening,
                                    //                        0 = closing)
-    uint8_t      pad015[3];        // +0x015..+0x017
-    float        animTimer0;       // +0x018  fade progress 0..1
-    uint8_t      pad01C[4];        // +0x01C..+0x01F
+    float        animTimer0;       // fade progress 0..1
 
-    // +0x020: bgDim Quad, fullscreen dark backdrop. setSize(1.0, virtualHeight),
+    // bgDim Quad, fullscreen dark backdrop. setSize(1.0, virtualHeight),
     // setColor(0xff000000). drawn first (under tex 0) before the chrome push.
-    Quad         bgDim;            // +0x020..+0x0F7  (0xD8 bytes; trailing 0x10
+    Quad         bgDim;            // (0xD8 bytes; trailing 0x10
                                    //                  holds the animation target
                                    //                  rect, see quad.h)
 
-    // +0x0F8: frame9slice, chrome border. Label with 9 addGlyph slots
+    // frame9slice, chrome border. Label with 9 addGlyph slots
     // arranged as a 3x3 stretchable border on atlas pixels (72..170, 351..449).
-    Label        frame9slice;      // +0x0F8..+0x18F
+    Label        frame9slice;
 
-    // +0x190: titleQuad, per-subclass title bar. UV+size set from init()'s
+    // titleQuad, per-subclass title bar. UV+size set from init()'s
     // (x, y, w, h) atlas-pixel literals via the pixel-rect helper.
-    Quad         titleQuad;        // +0x190..+0x267
+    Quad         titleQuad;
 
-    // +0x268: closeBg Quad, round backdrop behind confirmButton. drawn only
+    // closeBg Quad, round backdrop behind confirmButton. drawn only
     // when readyByte is set.
-    Quad         closeBg;          // +0x268..+0x33F
+    Quad         closeBg;
 
-    // +0x340: confirmButton Quad. hit-tested by baseUpdate against
+    // confirmButton Quad. hit-tested by baseUpdate against
     // touch coords when readyByte is set.
-    Quad         confirmButton;    // +0x340..+0x417
+    Quad         confirmButton;
 
-    bool         readyByte;        // +0x418  =1 once subclass enables commit;
+    bool         readyByte;        // =1 once subclass enables commit;
                                    //         confirm button accepts taps.
                                    //         also gates closeBg + confirm draw.
-    bool         confirmPressed;   // +0x419  =1 while touch is held over
+    bool         confirmPressed;   // =1 while touch is held over
                                    //         confirm button; latched so a
                                    //         tap-and-drag-off doesn't fire
                                    //         vtable[5].
-    uint8_t      pad41A[6];        // +0x41A..+0x41F  alignment to 0x420
 };
-
-static_assert(sizeof(Menu) == 0x420,
-              "Menu must be exactly 0x420 bytes, matches the binary's per-subclass "
-              "header before content slots begin at +0x420.");

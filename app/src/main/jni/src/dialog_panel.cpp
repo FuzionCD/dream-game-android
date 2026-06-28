@@ -31,12 +31,10 @@ inline float clamp01(float value, float lo, float hi) {
 // reconstructed from Ghidra FUN_1000404e8
 void DialogPanel::init() {
     visible = false;
-    std::memset(pad001, 0, sizeof(pad001));
     posX = 0.0f;
     posY = 0.0f;
     configA = false;
     configB = false;
-    std::memset(pad00E, 0, sizeof(pad00E));
 
     // 9-slice frame pieces + 2 mirrored tail pairs (default-constructed here,
     // then UV + size set below).
@@ -56,8 +54,8 @@ void DialogPanel::init() {
     bottomEdgeAfterTail = TileIcon();
     cornerBR            = TileIcon();
 
-    // text items: binary calls FUN_10002fa08 (TextItem::init) on each via
-    // the loop at +0xC30..+0xDC8. fields configured per-line below.
+    // text items: binary calls FUN_10002fa08 (TextItem::init) on each in a
+    // loop. fields configured per-line below.
     for (int i = 0; i < 3; i++) {
         textLines[i].init();
     }
@@ -83,28 +81,28 @@ void DialogPanel::init() {
     // topEdgeAfterTail: same stripe UV, fills the top edge right of the up-tail
     setTile(topEdgeAfterTail, 0.9658203f, 0.82714844f, 0.9667969f, 0.85839844f,
             0.0015625f, 0.05f);
-    // cornerTR (+0x448)
+    // cornerTR
     setTile(cornerTR, 0.9667969f, 0.82714844f, 1.0f, 0.85839844f,
             0.053125f, 0.05f);
-    // leftEdge (+0x520)
+    // leftEdge
     setTile(leftEdge, 0.9345703f, 0.85839844f, 0.9658203f, 0.859375f,
             0.05f, 0.0015625f);
-    // centerFill (+0x5F8)
+    // centerFill
     setTile(centerFill, 0.9658203f, 0.85839844f, 0.9667969f, 0.859375f,
             0.0015625f, 0.0015625f);
-    // rightEdge (+0x6D0)
+    // rightEdge
     setTile(rightEdge, 0.9667969f, 0.85839844f, 1.0f, 0.859375f,
             0.053125f, 0.0015625f);
-    // cornerBL (+0x7A8)
+    // cornerBL
     setTile(cornerBL, 0.9345703f, 0.859375f, 0.9658203f, 0.8925781f,
             0.05f, 0.053125f);
-    // bottomEdge (+0x880)
+    // bottomEdge
     setTile(bottomEdge, 0.9658203f, 0.859375f, 0.9667969f, 0.8925781f,
             0.0015625f, 0.053125f);
-    // bottomEdgeAfterTail (+0xB08)
+    // bottomEdgeAfterTail
     setTile(bottomEdgeAfterTail, 0.9658203f, 0.859375f, 0.9667969f, 0.8925781f,
             0.0015625f, 0.053125f);
-    // cornerBR (+0xBE0)
+    // cornerBR
     setTile(cornerBR, 0.9667969f, 0.859375f, 1.0f, 0.8925781f,
             0.053125f, 0.053125f);
 
@@ -133,13 +131,13 @@ void DialogPanel::init() {
     tailDown[1].quad.addVertexOffset(0.0f,  0.0296875f);
 
     // text-line per-item state. binary writes per line:
-    //   glyphTablePtr (+0x58) = game + 0x1220   (the dialog font's glyph table)
-    //   scaleX        (+0x68) = 0.072
-    //   scaleY        (+0x6C) = 0.072
-    //   rgba          (+0x74) = 0xff1e3232
-    //   applyColor()                            (no-op on empty glyph vec)
+    //   glyphTablePtr = the dialog font's glyph table
+    //   scaleX        = 0.072
+    //   scaleY        = 0.072
+    //   rgba          = 0xff1e3232
+    //   applyColor()  (no-op on empty glyph vec)
     //
-    // dialog panel uses BMFontTable[1] ("fontClean.fnt") at game+0x1220.
+    // dialog panel uses BMFontTable[1] ("fontClean.fnt").
     // populated by Game::loadFonts at startup. typed accessor returns the
     // int* expected by TextItem (textureIndex at offset 0).
     Game* g = getGame();
@@ -165,8 +163,8 @@ void DialogPanel::init() {
 }
 
 // reconstructed from Ghidra FUN_10004128c (panel reset / dismiss).
-// early-out if already invisible. when visible: clear visible + a downstream
-// flag at +0xF3C, set fadeProgress = 0 or 1 depending on hardReset, then
+// early-out if already invisible. when visible: clear visible +
+// interpolatePosition, set fadeProgress = 0 or 1 depending on hardReset, then
 // call update(0) to apply.
 void DialogPanel::reset(int hardReset) {
 

@@ -13,7 +13,6 @@ using namespace NemesisRenderableConstants;
 void NemesisRenderable::init() {
     // visible flag + its trailing pad
     visible = false;
-    std::memset(pad001, 0, sizeof(pad001));
 
     // 25 hex segments: bare Quad init, no UV/size yet (placeOnHexGrid sets those)
     for (int i = 0; i < 25; i++) {
@@ -21,7 +20,7 @@ void NemesisRenderable::init() {
         std::memset(segments[i].scratch, 0, sizeof(segments[i].scratch));
     }
 
-    // center quad and bg circle are TileIcons (Quad + 0x10 extra)
+    // center quad and bg circle are TileIcons (Quad plus 0x10 extra bytes)
     centerQuad = TileIcon();
     bgQuad = TileIcon();
 
@@ -55,16 +54,13 @@ void NemesisRenderable::init() {
     pendingXP = 0;
     fillTimer = 1.0f;  // DAT_100059c34
     fillFlag = false;
-    std::memset(pad3A19, 0, sizeof(pad3A19));
 
     // nemesis eat-cycle state (lives in the trailing pad past pendingXP).
     // zeroed at init; setHP's death path and the state-machine drive these.
     eatTarget = 0;
     eatActive = false;
-    std::memset(pad3A25, 0, sizeof(pad3A25));
     eatStep   = 0;
     eatFired  = false;
-    std::memset(pad3A2D, 0, sizeof(pad3A2D));
 
     // center quad UV: (0, 513) -> (184, 667) on 1024-wide texture, size 0.288 x 0.25
     centerQuad.quad.setTexCoords(0.0f, 0.50097656f, 0.1796875f, 0.6513672f);
@@ -84,12 +80,9 @@ void NemesisRenderable::init() {
     // both outline dot[i] and fill dot[i] get the same position. each pair's
     // UV/size/offset matches what the binary writes.
     //
-    // center.x and center.y come from *(float*)(this + 0x176c) and (this + 0x1768).
-    // those addresses fall inside bgQuad (TileIcon at +0x16c0 spans +0x16c0..+0x1797),
-    // specifically at TileIcon's quad.posX / quad.posY (+0xa8 and +0xac inside the
-    // TileIcon = +0x1768 and +0x176c absolute). so center is just (bgQuad.posX, bgQuad.posY).
-    // bgQuad has not been positioned yet (posX/posY are 0 from the constructor of Quad),
-    // so center is (0, 0) here. placeOnHexGrid may move it.
+    // center.x and center.y are just bgQuad.quad.posX / posY. bgQuad has not
+    // been positioned yet (posX/posY are 0 from Quad's constructor), so center
+    // is (0, 0) here. placeOnHexGrid may move it.
     float centerX = bgQuad.quad.posX;
     float centerY = bgQuad.quad.posY;
 

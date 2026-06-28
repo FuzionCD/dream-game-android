@@ -94,8 +94,8 @@ void LeaderboardMenu::init() {
 // after the layout, calls update(0, 0) to prime the touch-state machine
 // (FUN_100037b34's trailing tick at the end of FUN_100037118).
 void LeaderboardMenu::open() {
-    // section 1: state flags. visible/closeRequested packed at +0,
-    // pressed/backTapConfirmed packed at +0x178.
+    // section 1: state flags. visible/closeRequested and
+    // pressed/backTapConfirmed.
     visible          = 1;
     closeRequested   = 0;
     pressed          = 0;
@@ -191,7 +191,7 @@ void LeaderboardMenu::open() {
         // binary sums (centerY+cal)*0.5 + baseline FIRST, then adds the
         // diff term last: D + (H05 + B). float add is not associative, so
         // the grouping is load-bearing (asm 0x10003737c forms H05+B, then
-        // 0x100037390 `fadd s0,s1,s0` adds D last).
+        // `fadd s0,s1,s0` adds D last).
         const float labelY =
             (static_cast<float>(diff) * kDiffYStridePx) / 640.0f
             + ((headerCenterY + kDiffYCalibration) * 0.5f + kDiffYBaseline);
@@ -239,7 +239,7 @@ void LeaderboardMenu::open() {
         sec.divider2.posX = 1.0f - sec.divider1.posX;
         sec.divider2.posY = sec.divider1.posY;
 
-        // setColor with diffLabel rgba + 0xff alpha (= solid).
+        // setColor with diffLabel rgba, 0xff alpha (= solid).
         {
             const uint32_t solidRgba =
                 (pal.labelRgba & 0x00FFFFFFu) | 0xFF000000u;
@@ -309,7 +309,7 @@ void LeaderboardMenu::open() {
             // applyColor, then setString of "%d" of its field.
             //
             // worlds is the first per-row TextItem set up by the binary
-            // (at x28+0x680 = worldsCount). its posY = portrait.posY +
+            // (worldsCount). its posY = portrait.posY +
             // maxCharHeight * scaleY * 0.5 (vertical center on portrait).
             char buf[16];
 
@@ -328,29 +328,29 @@ void LeaderboardMenu::open() {
                     ti.posX = rightAlignX - ti.renderedWidth * ti.scaleX;
                 };
 
-            // worldsCount (first one set up by binary, at +0x680).
+            // worldsCount (first one set up by binary).
             setupNumberTextItem(r.worldsCount, entry.worlds,
                                 kWorldsLabelRightX);
             r.worldsCount.posY = r.portrait.posY
                                + r.worldsCount.maxCharHeight
                                  * r.worldsCount.scaleY * 0.5f;
 
-            // levelsCount (binary's second, at +0x570). shares Y with
+            // levelsCount (binary's second). shares Y with
             // worldsCount, as do the rest.
             setupNumberTextItem(r.levelsCount, entry.levels,
                                 kLevelsRightX);
             r.levelsCount.posY = r.worldsCount.posY;
 
-            // itemsCount (binary's third, at +0x5f8).
+            // itemsCount (binary's third).
             setupNumberTextItem(r.itemsCount, entry.items, kItemsRightX);
             r.itemsCount.posY = r.worldsCount.posY;
 
-            // turnsCount (binary's fourth, at +0x708).
+            // turnsCount (binary's fourth).
             setupNumberTextItem(r.turnsCount, entry.turns,
                                 kTurnsLabelRightX);
             r.turnsCount.posY = r.worldsCount.posY;
 
-            // scoreCount (binary's fifth, at +0x790). right-aligned to
+            // scoreCount (binary's fifth). right-aligned to
             // emptyMarker.right + kScoreXGap.
             const float emptyMarkerRight = r.emptyMarker.posX
                                          + r.emptyMarker.width * 0.5f
@@ -383,20 +383,20 @@ void LeaderboardMenu::open() {
                     ti.posY = anchorNumber.posY;
                 };
 
-            // worldsLabel (binary's first label, at +0x928), anchored to
+            // worldsLabel (binary's first label), anchored to
             // worldsCount.
             setupUnitLabel(r.worldsLabel, "world", "worlds",
                            entry.worlds, r.worldsCount, kUnitLabelXGap);
 
-            // levelsLabel (binary's second label, at +0x818).
+            // levelsLabel (binary's second label).
             setupUnitLabel(r.levelsLabel, "level", "levels",
                            entry.levels, r.levelsCount, kUnitLabelXGap);
 
-            // itemsLabel (binary's third label, at +0x8a0).
+            // itemsLabel (binary's third label).
             setupUnitLabel(r.itemsLabel, "item", "items",
                            entry.items, r.itemsCount, kUnitLabelXGap);
 
-            // turnsLabel (binary's fourth label, at +0x9b0).
+            // turnsLabel (binary's fourth label).
             setupUnitLabel(r.turnsLabel, "turn", "turns",
                            entry.turns, r.turnsCount, kUnitLabelXGap);
 

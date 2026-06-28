@@ -6,18 +6,18 @@
 //
 // the binary's parent argument is `undefined8 *param_2`, a pointer to a
 // packed (gridCol, gridRow) int pair (8 bytes). the ctor dereferences once
-// (`param_1[0x1d] = *param_2`) so the pointed-to coords get cached at +0xE8.
+// (the binary copies `*param_2` into gridCol/gridRow) so the pointed-to
+// coords get cached in the base.
 // observed call sites pass either &local_zero (PlayerSystem, SnagContent)
 // or `&parentTile->gridCol` (TileContent), so the cached coords are 0
 // pre-commit and re-synced by FUN_10001349c (= TileObject::setGridCoord)
 // once the parent tile drops onto a hex.
 void MovableActor::initBase(const void* parentCoordPtr) {
-    // C++ implicit vtable pointer at +0x00 is set by the compiler-generated
+    // C++ implicit vtable pointer is set by the compiler-generated
     // ctor; the binary's explicit vtable assignment is replaced by C++
     // virtual dispatch on onFade / onScaleOut and the destructor chain.
 
-    visible = true;                                  // +0x008
-    std::memset(pad009, 0, sizeof(pad009));
+    visible = true;
 
     baseQuad = Quad();                               // FUN_100007d78
 
@@ -30,11 +30,11 @@ void MovableActor::initBase(const void* parentCoordPtr) {
         gridRow = 0;
     }
 
-    spawnT     = 1.0f;                               // +0x0F0 (no spawn anim)
+    spawnT     = 1.0f;                               // (no spawn anim)
     spawnFromX = 0.0f; spawnFromY = 0.0f;
     spawnToX   = 0.0f; spawnToY   = 0.0f;
 
-    moveT          = 1.0f;                           // +0x104 (no move anim)
+    moveT          = 1.0f;                           // (no move anim)
     moveFromX = 0.0f;
     moveFromY = 0.0f;
 
@@ -44,8 +44,8 @@ void MovableActor::initBase(const void* parentCoordPtr) {
     moveQueue.clear();
     moveStepRate = 0.0f;
 
-    fadeT     = 1.0f;                                // +0x12C
-    scaleOutT = 1.0f;                                // +0x130
+    fadeT     = 1.0f;
+    scaleOutT = 1.0f;
 }
 
 // reconstructed from Ghidra FUN_100038e8c. onFade is vtable[6]; the binary

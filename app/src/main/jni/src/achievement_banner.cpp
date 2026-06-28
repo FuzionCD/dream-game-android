@@ -369,7 +369,7 @@ void AchievementBanner::open(uint32_t idx) {
                  ACHIEVEMENT_ICON_SIZE_PX * kScreenInv);
 
     // 2. title + description from ACHIEVEMENT_TABLE; both bound to the dialog
-    //    font (= game+0x1220 = bmfontTablePtr(1)).
+    //    font (= bmfontTablePtr(1)).
     title.glyphTablePtr       = game->bmfontTablePtr(1);
     title.setString(info.title, -1);
     description.glyphTablePtr = game->bmfontTablePtr(1);

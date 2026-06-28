@@ -22,7 +22,6 @@
 
 struct SoundQueueEntry {
     uint8_t playFlag;
-    uint8_t pad[3];
     float delay;
 };
 

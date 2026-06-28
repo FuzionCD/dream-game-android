@@ -21,105 +21,38 @@ class GameBoard;
 //   setHexUVs:      FUN_100012930 (computes UV from tileVariant/gridIdx)
 //   setPosition:    FUN_100012c34 (writes posX/posY, propagates to sub-objects)
 //   setRackPosition:FUN_100012d28 (rack-slot slide animation start)
-//   finalizeStart:  FUN_100013410 (verifies +0x208 alive)
-//   getContentType: FUN_1000133b0 (returns content+0x134 if alive, else 0)
-//   getSnagType:    FUN_1000133f0 (returns snagContent+0x134 if alive, else 0)
+//   finalizeStart:  FUN_100013410 (verifies snagContent alive)
+//   getContentType: FUN_1000133b0 (returns content type if alive, else 0)
+//   getSnagType:    FUN_1000133f0 (returns snag type if alive, else 0)
 //   erase:          FUN_100013450 (kill+fade both contents, blanks the tile)
 //   transformToSnag:FUN_1000135d0 (replaces snagContent with a new snag)
-//   pushDecoration: FUN_100013870 (adds entry to decoration list at +0x228)
+//   pushDecoration: FUN_100013870 (adds entry to the decorations list)
 //
 // TileObject is one hex on the playable grid, or one tile in the 5-rack at the
 // bottom of the screen. it owns:
 //   - the main hex Quad (the rendered face)
 //   - a smaller icon Quad (overlay decoration on top of the face)
 //   - hex-grid coordinates (col, row); screen XY is computed from these
-//   - a TileContent* (+0x200, 0x178 bytes), for regular world tiles, holds
+//   - a TileContent* (0x178 bytes), for regular world tiles, holds
 //     the "what's on this tile" data: type, variant, color tint.
-//   - a SnagContent* (+0x208, 0x498 bytes), for snag (enemy) encounter tiles
+//   - a SnagContent* (0x498 bytes), for snag (enemy) encounter tiles
 //     with the recognisable atk/def/hp 3-stat fight UI. the same struct is
 //     also allocated for the start tile (kind=1), where it acts as a non-fight
 //     "portal" variant with special stat scaling per FUN_10003ccc8's
 //     `if (uVar8 == 1)` branch; the 3 stat quads exist in memory but are
 //     never shown as a fight because no combat is triggered on level entry.
 //     also reused by transformToSnag to spawn an effect-driven snag.
-//   - a small vector at +0x210..+0x227 tracking SnagContent allocations so
-//     that transformToSnag can replace +0x208 without leaking the old one.
-//   - a doubly-linked list at +0x228 of "decorations" added via pushDecoration
+//   - a small vector tracking SnagContent allocations so
+//     that transformToSnag can replace snagContent without leaking the old one.
+//   - a doubly-linked list of "decorations" added via pushDecoration
 //     (small icons drawn over the tile to indicate atk-boost / def-boost / etc.)
 //
 // allocation: operator_new(0x248), constructed by FUN_1000120ec, populated
 // either by FUN_100012b5c (world tile) + new TileContent or by
 // FUN_100012850 (snag tile or kind=1 start tile) + new SnagContent.
 //
-// pushed onto the GameBoard's world tile list at +0x96D8 (for world tiles
-// and the start tile) or stored in GameBoard.rack[5] at +0x158 (for rack tiles).
-//
-// ---- byte map (0x248 bytes total, derived from FUN_1000120ec, 12930, 12c34,
-// 12d28, 13870 access patterns) ----
-//
-//   +0x000..+0x0C7  Quad mainQuad           the hex face Quad (texture 8 / 9)
-//   +0x0C8..+0x0D7  (gap, unused?)
-//   +0x0D8          int tileVariant          texture pool index (0..11). FUN_100012930
-//                                            uses (tileVariant, gridIdx) to pick the
-//                                            UV cell on tiles{1..4}.png, and
-//                                            FUN_100012d70 reads the same pair
-//                                            against kGridPoolTable to determine
-//                                            which 6-direction exits the variant
-//                                            permits. not a board placement coord.
-//   +0x0DC          int gridIdx             variant index within layout (0..23).
-//                                            see tileVariant above.
-//   +0x0E0          bool mirror             RNG-rolled in setVisual (50% chance);
-//                                            triggers a horizontal-mirror swap
-//                                            of the hex face's UV coordinates
-//   +0x0E1..+0x0E3  (pad)
-//   +0x0E4          int rotationStep        RNG-rolled [0..5] in setVisual.
-//                                            controls in-engine rotation only:
-//                                            mainQuad.rotation = step * 60deg.
-//                                            FUN_100012d70 also reads it as the
-//                                            base rotation when computing exit
-//                                            permits.
-//   +0x0E8          int gridCol             placed hex-grid column (set only by
-//                                            FUN_10001349c when the tile commits
-//                                            to the page list). stays 0 for tiles
-//                                            sitting in the rack pre-pickup.
-//                                            FUN_100020880 reads this to detect
-//                                            cell occupancy on the board.
-//   +0x0EC          int gridRow             placed hex-grid row (paired with
-//                                            gridCol; 8 bytes total written
-//                                            atomically by FUN_10001349c).
-//   +0x0F0..+0x0F7  (zeroed by ctor)
-//   +0x0F8..+0x1BF  Quad iconQuad           small overlay icon Quad
-//                                            (UV 0.127x0.142, size 0.203x0.227,
-//                                             alpha 0xB4)
-//   +0x1C0..+0x1CF  (gap, unused?)
-//   +0x1D0          float scale_1D0         init 1.0, overall scale modifier
-//   +0x1D4          bool slideAnimActive    set by setRackPosition (rack slide-in)
-//   +0x1D5          bool slideImmediate     setRackPosition param_4
-//   +0x1D6          bool slideFlag          setRackPosition param_5
-//   +0x1D7          (pad)
-//   +0x1D8          float slideStartPos[2]  mirrored from mainQuad.pos at slide start
-//   +0x1E0          float slideTargetPos[2] target position for rack slide
-//   +0x1E8          float slideTimer        init 1.0; setRackPosition writes 0
-//   +0x1EC          int   slideOffsetX      setRackPosition param_1
-//   +0x1F0..+0x1F7  (gap)
-//   +0x1F8          float scale_1F8         init 1.0, secondary scale modifier
-//   +0x1FC          (pad)
-//   +0x200          TileContent*  content       new(0x178); set by setVisual
-//                                                when content type != 0
-//   +0x208          SnagContent*  snagContent   new(0x498); set by setSnagVisual
-//                                                (snag tile / kind=1 start tile)
-//                                                or transformToSnag
-//   +0x210..+0x227  vector<SnagContent*>        (begin, end, end_cap)
-//                                                tracks 0x498-byte allocations
-//                                                so they don't leak when
-//                                                transformToSnag replaces +0x208
-//   +0x228..+0x240  std::list<DecorationValue> decorations  (libc++ head:
-//                                                prev/next/size = 0x18 bytes)
-//   +0x240          int            field240         init 0; small counter
-//   +0x244          bool           field244         init 0
-//   +0x245..+0x247  (pad)
-//
-//   total: 0x248 bytes
+// pushed onto the GameBoard's world tile list (for world tiles
+// and the start tile) or stored in GameBoard.rack[5] (for rack tiles).
 //
 // the decorations std::list stores DecorationValue nodes (added by
 // pushDecoration); see tile_decoration.h for that value's field layout.
@@ -142,10 +75,9 @@ public:
     // ptrs (via their MovableActor vtable[4] = setPosition).
     void setPosition(float x, float y);
 
-    // FUN_10001349c: write gridCol/gridRow to +0xE8/+0xEC and propagate the
-    // same pair to TileContent (+0x200 -> its +0xE8) and SnagContent (+0x208
-    // -> its +0xE8) when those sub-actors are alive. called by the page-commit
-    // path when a tile drops onto a hex.
+    // FUN_10001349c: write gridCol/gridRow and propagate the same pair to
+    // TileContent's and SnagContent's grid coords when those sub-actors are
+    // alive. called by the page-commit path when a tile drops onto a hex.
     void setGridCoord(int col, int row);
 
     // FUN_100013410: returns snagContent if it's alive (visible byte set),
@@ -201,13 +133,13 @@ public:
     // backed by kGridPoolTable[tileVariant][gridIdx].exits.
     bool permitsDirection(int dir, int baseRot = -1) const;
 
-    // FUN_100012844: write `degrees` to mainQuad.rotation (+0xC0) and
-    // iconQuad.rotation (+0x1B8 = iconQuad+0xC0). used by the back-button
+    // FUN_100012844: write `degrees` to mainQuad.rotation and
+    // iconQuad.rotation. used by the back-button
     // rotation drag to apply continuous rotation from finger movement
     // without going through the lerp animator.
     void setRotationDirect(float degrees);
 
-    // FUN_100013bfc: walk the decoration list (sentinel at +0x228); for
+    // FUN_100013bfc: walk the decoration list; for
     // each node whose `kind` matches and whose `suppressed` byte is 0,
     // set suppressed = 1 and alphaT = 0 (which kicks the alpha-fade-out
     // animation in the per-frame decoration walk inside update()). used
@@ -216,7 +148,7 @@ public:
     void suppressDecorationsOfKind(int kind);
 
     // FUN_100013c3c: return the first non-suppressed decoration of the
-    // given `kind`'s `value` field (+0xF8). returns 0 when no matching
+    // given `kind`'s `value` field. returns 0 when no matching
     // active decoration exists. consumed by HexMap dispatch's snag-2
     // ("Hound") damage tally: kind=2 decorations stash the damage stack
     // count, which the placed-tile dispatch reads then clears.
@@ -238,7 +170,7 @@ public:
     // hardcoded kind=1 generic-snag spawn. same setHexUVs as setVisual,
     // then allocates a SnagContent(0x498) populated with player-context
     // stats (totalTurnCount, levelTurnCount, worldIndex). stored at
-    // this->snagContent and pushed into the tracking vector at +0x210 via
+    // this->snagContent and pushed into the tracking vector via
     // FUN_100012ad8.
     void setSnagVisual(int gridLayout, int gridIdx, uint32_t kind,
                        PlayerSystem* player, int levelTurnCount,
@@ -278,14 +210,14 @@ public:
 
     // FUN_100013540: replace `content` with a freshly-allocated TileContent
     // of `(type, magnitude)`. dtors the old content (which fades it via the
-    // vtable's deleting-dtor path), pushes the new content into +0x200, and
+    // vtable's deleting-dtor path), assigns the new content, and
     // calls revive() so it scale-pops in. used by snag-death effects that
     // mutate the killed snag's parent tile into a stat-boost tile (e.g.
     // PainfulMemory swap, snag-0x57 in FUN_100025dcc).
     void setTileContent(uint32_t type, int magnitude);
 
     // FUN_1000135d0: replace snagContent with a newly-spawned SnagContent
-    // (size 0x498), tracked in the +0x210 vector. used when an effect turns a
+    // (size 0x498), tracked in the trackedContent vector. used when an effect turns a
     // tile into a snag (e.g. Parasite via Infestation, type 0x48).
     void transformToSnag(uint32_t snagKind, PlayerSystem* player,
                          int levelTurnCount, int pickupsFound, int worldIndex);
@@ -308,9 +240,9 @@ public:
     //     incoming one is consumed.
     void attachSnag(SnagContent* sc);
 
-    // not virtual: TileObject+0x000 is Quad, and the binary's vtable[2]
+    // not virtual: TileObject begins with its Quad, and the binary's vtable[2]
     // dispatch goes straight to Quad::draw on the first 0xC8 bytes.
-    // adding C++ virtuals here would inject a TileObject vtable at offset 0
+    // adding C++ virtuals here would inject a TileObject vtable at the start
     // and break the layout.
 
     // FUN_100012278: full per-tile draw. optional rotation matrix, optional
@@ -330,69 +262,61 @@ public:
 
     // ---- byte-exact fields ----
 
-    // 0x000..0x0D7: main Quad (the hex face). 0xD8 bytes; owns anim rect at +0xC8.
+    // main Quad (the hex face). 0xD8 bytes; owns the trailing anim rect.
     Quad mainQuad;
 
-    int gridLayout;              // 0x0D8  (texture pool layout 0..11; not a board coord)
-    int gridIdx;                 // 0x0DC  (variant within layout 0..23)
-    bool mirror;                 // 0x0E0  (50% RNG roll -> horizontal mirror)
-    uint8_t pad0E1[3];           // 0x0E1
-    int rotationStep;            // 0x0E4  (RNG roll [0..5]; rotation = step * 60deg)
-    int gridCol;                 // 0x0E8  (placed-on-board hex column; 0 until commit)
-    int gridRow;                 // 0x0EC  (placed-on-board hex row;    0 until commit)
+    int gridLayout;              // (texture pool layout 0..11; not a board coord)
+    int gridIdx;                 // (variant within layout 0..23)
+    bool mirror;                 // (50% RNG roll -> horizontal mirror)
+    int rotationStep;            // (RNG roll [0..5]; rotation = step * 60deg)
+    int gridCol;                 // (placed-on-board hex column; 0 until commit)
+    int gridRow;                 // (placed-on-board hex row;    0 until commit)
 
-    // 0x0F0: set to true when this tile is committed onto the page list
+    // set to true when this tile is committed onto the page list
     //        (= placed on the hex grid by commitRackTilePickup). dispatch
     //        Hex Map PostCommit's snag-0x28 grow gate reads this to detect
     //        "the snag's parent tile is committed", which forces the
     //        Threat-token burst to animate from the GameBoard's positionXY
     //        instead of (0, 0). only set, never cleared (sticky flag).
-    bool    committed;           // 0x0F0
-    uint8_t pad0F1[7];           // 0x0F1..0x0F7
+    bool    committed;
 
-    // 0x0F8..0x1CF: small overlay icon Quad (0xD8; owns anim rect at +0x1C0).
+    // small overlay icon Quad (0xD8; owns the trailing anim rect).
     Quad iconQuad;
 
     // iconQuad alpha-fade timer 0..1, rate dt/0.1s. fades 0->180 (slide
     // start) or 180->0 (slide finish). init 1 = idle.
-    float iconFadeT;             // 0x1D0
-    bool slideAnimActive;        // 0x1D4
-    bool slideImmediate;         // 0x1D5
-    bool slideFlag;              // 0x1D6
-    uint8_t pad1D7;              // 0x1D7
-    float slideStartPos[2];      // 0x1D8/0x1DC
-    float slideTargetPos[2];     // 0x1E0/0x1E4
+    float iconFadeT;
+    bool slideAnimActive;
+    bool slideImmediate;
+    bool slideFlag;
+    float slideStartPos[2];
+    float slideTargetPos[2];
     // slide timer 0..1, rate dt/0.2s, cos-eased. setRackPosition writes 0.
-    float slideTimer;            // 0x1E8
+    float slideTimer;
     // per-slot slide-start delay (seconds). populateRack passes slot * 0.05.
-    float slideDelay;            // 0x1EC
+    float slideDelay;
     // rotation-lerp endpoints; combat / event hooks set these (Phase C).
-    float rotationLerpStart;     // 0x1F0
-    float rotationLerpTarget;    // 0x1F4
+    float rotationLerpStart;
+    float rotationLerpTarget;
     // rotation-lerp timer 0..1, rate dt/0.2s. drives mainQuad+iconQuad rotation.
-    float rotationLerpT;         // 0x1F8
-    uint8_t pad1FC[0x4];         // 0x1FC..0x1FF
+    float rotationLerpT;
 
-    TileContent* content;             // 0x200
-    SnagContent* snagContent;         // 0x208
+    TileContent* content;
+    SnagContent* snagContent;
 
     // libc++'s std::vector<T*> matches the binary's 3-pointer triple
     // (begin, end, end_cap = 0x18 bytes); same trick we used for
     // PlayerSystem::perks. tracks SnagContent allocations so
-    // transformToSnag can replace +0x208 without leaking the previous one.
-    std::vector<SnagContent*> trackedContent;  // 0x210..0x227
+    // transformToSnag can replace snagContent without leaking the previous one.
+    std::vector<SnagContent*> trackedContent;
 
     // decorations stacked in front of the hex face, sorted ascending by `kind`
     // (pushDecoration inserts before the first node with a greater kind).
-    std::list<DecorationValue> decorations;   // 0x228..0x240 (0x18 bytes)
+    std::list<DecorationValue> decorations;   // (0x18 bytes)
 
     // tile rotation timer 0..1. draw() rotates by rotationAnimT * 180deg.
-    float rotationAnimT;             // 0x240
+    float rotationAnimT;
     // when true, update() drives rotationAnimT toward 1 (factor +1);
     // when false but rotationAnimT > 0, drives it toward 0 (factor -1).
-    bool    rotationAnimActive;      // 0x244
-    uint8_t pad245[3];               // 0x245..0x247
+    bool    rotationAnimActive;
 };
-
-static_assert(sizeof(TileObject) == 0x248,
-              "TileObject must be exactly 0x248 bytes to match the binary");

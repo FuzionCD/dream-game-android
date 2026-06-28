@@ -155,8 +155,7 @@ void HexMap::addCell(uint32_t kind, int gridCol, int gridRow, uint32_t fadeTimer
             return;
         }
 
-        // same kind: refresh fadeTimer only (binary's
-        // `*(uint*)((long)plVar1 + 0x2c) = param_4;`).
+        // same kind: refresh fadeTimer only.
         if ((uint32_t)cell->kind == kind) {
             cell->fadeTimer = (int)fadeTimer;
             return;

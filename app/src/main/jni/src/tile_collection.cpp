@@ -15,9 +15,7 @@ void TileCollection::init() {
     additionalData.clear();
     stagingValue = 0;
     scale = 1024.0f;
-    pad80 = 0.0f;
     totalWidth = 0.0f;
-    flag88 = false;
     posX = 0.0f;
     posY = 0.0f;
     rotated = false;

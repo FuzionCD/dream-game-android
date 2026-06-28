@@ -39,7 +39,6 @@ void ColorTint::init() {
     anchorY = 0.0f;
     scaleX = 1.0f;
     scaleY = 1.0f;
-    pad34 = 0;
 }
 
 // reconstructed from Ghidra FUN_10003c0ec

@@ -15,7 +15,7 @@ class Quad;      // forward decl; forEachVisibleGlyph hands callback a Quad&
 //   update: FUN_10003a010
 //   reset : FUN_10003a408
 //
-// AnimationController lives at GameBoard+0x9D48 (0x88 bytes). it's the
+// AnimationController lives at GameBoard.animController (0x88 bytes). it's the
 // "transient overlay text" subsystem: picks an entry from the global
 // animation table at DAT_10007dfe0 (lazy-built by FUN_1000390b0) and
 // renders the entry's text glyphs as fading / sliding overlays on top of
@@ -23,22 +23,23 @@ class Quad;      // forward decl; forEachVisibleGlyph hands callback a Quad&
 // style banner text.
 //
 // the controller has two independent animation tracks gated by separate
-// enable flags + timer pairs. fields ordered by byte offset for legibility:
-//   - track 1: enable at +0x50, timer at +0x54, rate at +0x58, extra +0x5C
-//   - track 2: enable at +0x60, timer at +0x64, rate at +0x68, extra +0x6C
+// enable flags + timer pairs:
+//   - track 1: track1Enabled / track1Timer / track1RateDivisor / track1Extra
+//   - track 2: track2Enabled / track2Timer / track2RateDivisor / track2Extra
 //
-// reset (FUN_10003a408) enables track 1 (sets +0x50 = 1) and disables track
-// 2 (clears +0x60). update (FUN_10003a010) then dispatches: if track 2 is
-// enabled it runs the "track 2 body" first (advances +0x64); otherwise, if
-// track 1 is enabled, it runs the "track 1 body" (advances +0x54).
+// reset (FUN_10003a408) enables track 1 (sets track1Enabled) and disables
+// track 2 (clears track2Enabled). update (FUN_10003a010) then dispatches: if
+// track 2 is enabled it runs the "track 2 body" first (advances track2Timer);
+// otherwise, if track 1 is enabled, it runs the "track 1 body" (advances
+// track1Timer).
 //
 // the bodies are not symmetric:
-//   - track 1 body uses cumulativeGlyphs (+0x40) for time normalization,
-//     does not skip spaces, and consumes the per-glyph color array at
-//     +0x28 (built by initFromLines).
-//   - track 2 body uses visibleGlyphs (+0x48), skips spaces, and pulls
-//     per-glyph color + scale data from the auxiliary table at +0x70
-//     (perGlyphData, built by FUN_1000390b0).
+//   - track 1 body uses cumulativeGlyphs for time normalization,
+//     does not skip spaces, and consumes the per-glyph color array
+//     glyphColors (built by initFromLines).
+//   - track 2 body uses visibleGlyphs, skips spaces, and pulls
+//     per-glyph color + scale data from the auxiliary table perGlyphData
+//     (built by FUN_1000390b0).
 // the score panel calls reset() and only ever runs track 1.
 //
 // draw() is gated on `track1.timer > 0 and track2.timer < 1`. before any
@@ -62,7 +63,7 @@ public:
                        uint32_t outlineRgba);
 
     // FUN_100039018. dispatches to initFromLines with the 0xFFFFAAFA /
-    // 0xFFDC3CC8 dream-snippet palette and the static 81-entry snippet
+    // dream-snippet palette and the static 81-entry snippet
     // table (= DreamSnippets::table()). out-of-range entryIdx clamps to
     // 1, matching the binary's `if (table.size() <= idx) idx = 1` guard.
     // called from GameBoard::initLevelContent to display the level-start
@@ -89,19 +90,14 @@ public:
     void draw();
 
     // FUN_10003a010, animation tick. dispatch order: when track 2 is
-    // enabled, runs the "track 2 body" (advances track2Timer at +0x64).
+    // enabled, runs the "track 2 body" (advances track2Timer).
     // otherwise, when track 1 is enabled, runs the "track 1 body"
-    // (advances track1Timer at +0x54). both bodies walk each TextItem
+    // (advances track1Timer). both bodies walk each TextItem
     // child's glyphs and animate color / alpha / scale per cosine ease.
     void update(float dt);
 
     // FUN_10003a408. enables track 1, disables track 2, zeros both
-    // timers, runs one update tick. matches binary:
-    //   if (byte +0x50 != 0) return;
-    //   *(byte*)+0x50 = 1;
-    //   *(byte*)+0x60 = 0;
-    //   *(float*)+0x54 = 0; *(float*)+0x64 = 0;
-    //   update(0);
+    // timers, runs one update tick.
     void reset();
 
     // FUN_10003a430. begin the banner fade-out. snapshots each visible
@@ -120,38 +116,35 @@ public:
     void forceFadeOutComplete();
 
     // --- byte-exact struct fields (0x88 bytes total) ---
-    float                  posX;                // +0x00
-    float                  posY;                // +0x04
+    float                  posX;
+    float                  posY;
     // children: per-glyph TextItem pointers. binary's std::vector<T*>
-    // layout is begin/end/cap pointers, 24 bytes total. occupies
-    // +0x08..+0x1F.
-    std::vector<TextItem*> children;            // +0x08
-    int64_t                childCount;          // +0x20  (mirrors children.size())
+    // layout is begin/end/cap pointers, 24 bytes total.
+    std::vector<TextItem*> children;
+    int64_t                childCount;          // (mirrors children.size())
 
     // per-glyph base color array. binary writes uint32 RGBA values into
     // it during init; consumed by update for the cos-eased fade.
-    std::vector<uint32_t>  glyphColors;         // +0x28
-    int64_t                cumulativeGlyphs;    // +0x40  (sum across children)
-    int64_t                visibleGlyphs;       // +0x48  (= count of non-space chars)
+    std::vector<uint32_t>  glyphColors;
+    int64_t                cumulativeGlyphs;    // (sum across children)
+    int64_t                visibleGlyphs;       // (= count of non-space chars)
 
-    // track 1 state at +0x50..+0x5F. enabled by reset() (FUN_10003a408
-    // writes *(byte*)+0x50 = 1); its body runs when track 2 is disabled
-    // and the body advances track1Timer (+0x54).
-    bool                   track1Enabled;       // +0x50
-    uint8_t                pad51[3];            // +0x51..+0x53
-    float                  track1Timer;         // +0x54  (0..1 progress)
-    float                  track1RateDivisor;   // +0x58
-    float                  track1Extra;         // +0x5C
+    // track 1 state. enabled by reset() (FUN_10003a408
+    // sets track1Enabled); its body runs when track 2 is disabled
+    // and the body advances track1Timer.
+    bool                   track1Enabled;
+    float                  track1Timer;         // (0..1 progress)
+    float                  track1RateDivisor;
+    float                  track1Extra;
 
-    // track 2 state at +0x60..+0x6F. disabled by reset(); its body runs
-    // first in the dispatch (when enabled) and advances track2Timer
-    // (+0x64). used by in-game banner text variants where both tracks
+    // track 2 state. disabled by reset(); its body runs
+    // first in the dispatch (when enabled) and advances track2Timer.
+    // used by in-game banner text variants where both tracks
     // animate simultaneously.
-    bool                   track2Enabled;       // +0x60
-    uint8_t                pad61[3];            // +0x61..+0x63
-    float                  track2Timer;         // +0x64
-    float                  track2RateDivisor;   // +0x68
-    float                  track2Extra;         // +0x6C
+    bool                   track2Enabled;
+    float                  track2Timer;
+    float                  track2RateDivisor;
+    float                  track2Extra;
 
 private:
     // shared walk used by startFadeOut (snapshot) and the track 2 body
@@ -168,17 +161,10 @@ public:
     // by startFadeOut from each visible glyph's current state at the
     // moment the fade kicks in. one entry per visible (non-space) glyph.
     struct PerGlyphFade {
-        uint32_t rgbaSnapshot;   // +0x00  glyph color at fade-start
-        float    scaleXSnapshot; // +0x04
-        float    scaleYSnapshot; // +0x08
+        uint32_t rgbaSnapshot;   // glyph color at fade-start
+        float    scaleXSnapshot;
+        float    scaleYSnapshot;
     };
-    static_assert(sizeof(PerGlyphFade) == 0xC,
-                  "PerGlyphFade must be 12 bytes to match the binary");
 
-    std::vector<PerGlyphFade> perGlyphData;  // +0x70..+0x87 (libc++ vector head)
+    std::vector<PerGlyphFade> perGlyphData;  // (libc++ vector head)
 };
-
-static_assert(sizeof(AnimationController) == 0x88,
-              "AnimationController must be exactly 0x88 bytes");
-static_assert(offsetof(AnimationController, perGlyphData) == 0x70,
-              "perGlyphData vector head must land at +0x70");

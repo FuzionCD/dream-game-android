@@ -11,13 +11,11 @@
 // clears the visible byte then default-constructs all 20 Quads in place.
 void StatBars::init() {
     visible = false;
-    std::memset(pad001, 0, sizeof(pad001));
     posX = 0.0f;
     posY = 0.0f;
-    std::memset(pad00C, 0, sizeof(pad00C));
 
     for (int i = 0; i < 20; i++) {
-        // matches the binary's loop: thunk_FUN_100007d78((Quad*)(this + 0x10 + i*0xE8))
+        // matches the binary's loop: thunk_FUN_100007d78 over each slot's Quad (stride 0xE8)
         new (&slots[i].quad) Quad();
         slots[i].targetX     = 0.0f;
         slots[i].targetY     = 0.0f;
@@ -157,7 +155,7 @@ void StatBars::spawnIconBurst(const float* tilePos, int contentType) {
     lookupContentIconUVPx(contentType, uvOriginPx, uvSizePx);
 
     // initial angle offset, rolled once before the loop. binary stashes
-    // the result at sp+0x18 and re-uses it as the per-slot angle floor.
+    // the result and re-uses it as the per-slot angle floor.
     float angleBase = rngFloat(NEG_PI, POS_PI, STREAM);
 
     for (int i = 0; i < SLOT_COUNT; i++) {
@@ -199,4 +197,3 @@ void StatBars::spawnIconBurst(const float* tilePos, int contentType) {
         slot.targetY = magnitude * std::sin(angle);
     }
 }
-

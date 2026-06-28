@@ -21,11 +21,11 @@ class EventSlot;
 //   increment:     FUN_10004d858   -> core event hook (see [[event-hooks]])
 //   beginSession:  FUN_10004d7ec
 //
-// AchievementTracker lives at Game+0x42F8. earlier phases scaffolded this
+// AchievementTracker lives at Game.achievementTracker_. earlier phases scaffolded this
 // as "AudioState" because the one ported method (beginSession, then
 // mis-named setMusicInGameMode) is invoked from initLevel(1) and looked
 // superficially like a music-mode toggle. nothing about this struct is
-// audio; the dispatcher at Game+0x3880 (SoundQueue) is the real audio
+// audio; the SoundQueue dispatcher is the real audio
 // fan-in.
 //
 // per-achievement state machine (states[idx]):
@@ -34,9 +34,9 @@ class EventSlot;
 //   2 = unlocked AND the banner has been shown
 //
 // counters split:
-//   - 47 of the 50 achievements: counter lives in the std::map at +0xD0
-//   - 3 unique-item std::set counters for idx 22 / 25 / 26 at +0xE8 /
-//     +0x100 / +0x118. these aren't "counters" in the increment sense;
+//   - 47 of the 50 achievements: counter lives in the counters std::map
+//   - 3 unique-item std::set counters for idx 22 / 25 / 26 (eventKinds /
+//     eventIds / snagKinds). these aren't "counters" in the increment sense;
 //     they're sets whose size() is the progress count. e.g. idx 22 =
 //     "Activate all 5 types of events" -> eventKinds.size() of 5 unlocks.
 //     bitmask 0x6400000 in increment() routes idx 22/25/26 away from
@@ -44,11 +44,11 @@ class EventSlot;
 //     external inserts into the sets via onEventActivated / onSnagEaten.
 //
 // dual notification lists:
-//   pendingNotifications at +0x138, drained when the banner shows the
+//   pendingNotifications, drained when the banner shows the
 //                                   unlock (achievements menu's update
 //                                   calls markShown when a tile enters
 //                                   the viewport)
-//   newlyUnlocked        at +0x150, xfer queue piped to GameKit's
+//   newlyUnlocked        xfer queue piped to GameKit's
 //                                   reportAchievement on iOS; on
 //                                   Android nothing consumes it but
 //                                   we keep the writes for fidelity
@@ -151,12 +151,10 @@ public:
 
     // ---- byte-exact field layout ----
 
-    uint8_t            dirty;                  // +0x000  consumed by GameKit xfer (iOS)
-    uint8_t            pad001[3];              // +0x001..+0x003  alignment for states[]
-    int32_t            states[50];             // +0x004..+0x0CB  per-achievement state machine
+    uint8_t            dirty;                  // consumed by GameKit xfer (iOS)
+    int32_t            states[50];             // per-achievement state machine
                                                //                 (0=locked, 1=banner-pending, 2=shown)
-    uint8_t            pad0CC[4];              // +0x0CC..+0x0CF  alignment for std::map head
-    std::map<int, int> counters;               // +0x0D0..+0x0E7  sparse counter store for the
+    std::map<int, int> counters;               // sparse counter store for the
                                                //                 47 non-special achievements
 
     // 3 std::set<int> objects, each 24 bytes (begin_ptr + end_node + size).
@@ -172,18 +170,13 @@ public:
     //   snagKinds  : idx 26 (target 100)= "Defeat 100 different special snags"
     //                                     inserted on onSpecialSnagEaten:
     //                                       insert(snag.kind)
-    std::set<int>      eventKinds;             // +0x0E8..+0x0FF
-    std::set<int>      eventIds;               // +0x100..+0x117
-    std::set<int>      snagKinds;              // +0x118..+0x12F
+    std::set<int>      eventKinds;
+    std::set<int>      eventIds;
+    std::set<int>      snagKinds;
 
-    uint8_t            damagedThisRun;             // +0x130  set 1 on first damage taken; cleared
+    uint8_t            damagedThisRun;             // set 1 on first damage taken; cleared
                                                    //          by beginSession on new-run start.
-    uint8_t            pad131[7];              // +0x131..+0x137  alignment for std::list head
 
-    std::list<int>     pendingNotifications;   // +0x138..+0x14F  banner-pending queue
-    std::list<int>     newlyUnlocked;          // +0x150..+0x167  GameKit xfer queue (iOS)
+    std::list<int>     pendingNotifications;   // banner-pending queue
+    std::list<int>     newlyUnlocked;          // GameKit xfer queue (iOS)
 };
-
-static_assert(sizeof(AchievementTracker) == 0x168,
-              "AchievementTracker must be exactly 0x168 bytes, filling the "
-              "Game struct exactly from +0x42F8 to TitleMenu at +0x4460.");

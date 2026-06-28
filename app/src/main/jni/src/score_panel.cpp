@@ -49,7 +49,7 @@ static constexpr float kLayoutRank1YBump     = -0.00625f;    // DAT_100059e28
 static constexpr float kDrawCosMult          = 3.14159274f;  // DAT_100059e2c
 static constexpr float kDrawRowStretchMax    = 1.4f;         // DAT_100059e30
 
-static constexpr float kInitialScoreDelay    = 2.5f;         // 0x40200000
+static constexpr float kInitialScoreDelay    = 2.5f;
 
 // the per-key currency icons live in ScorePanel::keysRow, a
 // std::list<KeyIconValue> (one entry per key earned). KeyIconValue is defined
@@ -370,7 +370,7 @@ void ScorePanel::open(const int* scoreCounts, int keysEarned) {
     }
 
     // result rank Quads start cleared; setResultRankVisual(rank) sets them up
-    // separately from FUN_100045410's gb+0x01 branch (= our scoreRequested).
+    // separately from FUN_100045410's GameBoard.scoreRequested branch.
     resultRankQuad.setTexCoords(0.0f, 0.0f, 0.0f, 0.0f);
     resultRankQuad.setSize(0.0f, 0.0f);
     resultPanelQuad.setTexCoords(0.0f, 0.0f, 0.0f, 0.0f);
@@ -568,8 +568,8 @@ void ScorePanel::update(float dt) {
             outSize = k + (1.0f - k) * kUpdateKeyScaleMax;
         }
 
-        // writes Quad.scaleX/scaleY (+0xB8/+0xBC inside each Quad), not
-        // animMinX/animMinY (+0xC8/+0xCC).
+        // writes Quad.scaleX/scaleY inside each Quad, not
+        // animMinX/animMinY.
         resultRankQuad.scaleX  = outSize;
         resultRankQuad.scaleY  = outSize;
         resultPanelQuad.scaleX = outSize;
@@ -643,8 +643,6 @@ void ScorePanel::setResultRankVisual(int rank) {
     // both result quads anchor to the Score row (rows[7]), not the title.
     // resultRankQuad.posX/posY are set first; resultPanelQuad picks them up
     // per-case with a small Y (and rank-4: X) bump.
-    //   *(panel + 0xf10) = 0.5
-    //   *(panel + 0xf14) = rows[7].titleLabel.posY + (-0.0125)
     resultRankQuad.posX = 0.5f;
     resultRankQuad.posY = rows[7].titleLabel.posY + kLayoutPanelYAbove;
 

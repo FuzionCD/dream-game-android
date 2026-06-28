@@ -9,30 +9,24 @@
 //   update:      FUN_10004b574
 //
 // the TitleMenu is the visual foundation layer: title screen, hex grid,
-// particle effects. it's embedded at game+0x4460, size ~0x16D50 bytes.
+// particle effects. it's embedded in Game, size ~0x16D50 bytes.
 // drawn FIRST (lowest layer), uses texture 8 (sheet1.png).
 //
-// all quads in this struct are full 0xD8-byte Quads. previously we modeled
-// these as Quad (0xC8) + 0x10 bytes of "extra" because the Quad ctor only
-// _memcpy's the first 0xD0 bytes, but the trailing 0x10 bytes at +0xC8..+0xD7
-// are actually the Quad's animMin/animMax target rect (see quad.h).
+// all quads in this struct are full 0xD8-byte Quads. the Quad ctor only
+// _memcpy's the first 0xD0 bytes, but the trailing 0x10 bytes are the
+// Quad's animMin/animMax target rect (see quad.h).
 //
-// all offsets verified against decompiled draw (FUN_10004be04) and
+// layout verified against decompiled draw (FUN_10004be04) and
 // update (FUN_10004b574).
 
-// tile object size matches sizeof(Quad) now that the animation target rect
-// is part of Quad itself (was previously TileIcon's "extra[0x10]")
-#define BOARD_TILE_OBJ_SIZE 0xD8
-
-// a tile object. TileIcon is just a Quad; what used to be
-// TileIcon::extra[0x10] is now Quad::animMin* / animMax* at +0xC8.
+// a tile object. TileIcon is just a Quad; the animation-target rect
+// (Quad::animMin* / animMax*) is part of Quad itself.
 // the nested `.quad` field is kept so existing access patterns like
 // `obj.quad.posX` continue to compile. zero size overhead because the
 // substruct sits at offset 0 and we don't add any other fields.
 struct TileIcon {
     Quad quad;
 };
-static_assert(sizeof(TileIcon) == BOARD_TILE_OBJ_SIZE, "TileIcon must be 0xD8 bytes");
 
 #define SMOKE_PARTICLE_COUNT 300
 #define BOARD_GRID_ROWS 20
@@ -70,80 +64,66 @@ public:
 
     // --- struct layout, byte-exact from decompilation ---
 
-    // +0x0000
-    bool visible;                              // +0x0000
-    bool initialized;                          // +0x0001
-    uint8_t pad02[6];                          // +0x0002
+    bool visible;
+    bool initialized;
 
-    // +0x0008: fade overlay (drawn with no texture when fadeProgress < 1.0)
-    TileIcon fadeOverlay;                        // +0x0008
+    // fade overlay (drawn with no texture when fadeProgress < 1.0)
+    TileIcon fadeOverlay;
 
-    // +0x00E0: fade progress (0 to 1; < 1 means title screen / fading in)
-    float fadeProgress;                        // +0x00E0
-    uint8_t padE4[4];                          // +0x00E4
+    // fade progress (0 to 1; < 1 means title screen / fading in)
+    float fadeProgress;
 
-    // +0x00E8: 300 particle objects (the swirling purple nebula)
-    TileIcon particles[SMOKE_PARTICLE_COUNT];    // +0x00E8 to +0xFE07
+    // 300 particle objects (the swirling purple nebula)
+    TileIcon particles[SMOKE_PARTICLE_COUNT];
 
-    // +0xFE08: tile grid (20 rows x 2 columns)
-    // first tile's posX/posY (+0xFEB0/+0xFEB4) used as rotation pivot
-    TileIcon tileGrid[BOARD_GRID_ROWS * BOARD_GRID_COLS]; // +0xFE08 to +0x11FC7
+    // tile grid (20 rows x 2 columns)
+    // first tile's posX/posY used as rotation pivot
+    TileIcon tileGrid[BOARD_GRID_ROWS * BOARD_GRID_COLS];
 
-    // +0x11FC8
-    float boardRotation;                       // +0x11FC8
-    uint8_t pad11FCC[4];                       // +0x11FCC
+    float boardRotation;
 
-    // +0x11FD0: cursor/selection mirror
-    TileIcon cursorObj;                          // +0x11FD0
+    // cursor/selection mirror
+    TileIcon cursorObj;
 
-    // +0x120A8: 3 title screen elements (gear parts / glow)
-    TileIcon logoPieces[BOARD_EXTRA_QUADS];       // +0x120A8 to +0x1232F
+    // 3 title screen elements (gear parts / glow)
+    TileIcon logoPieces[BOARD_EXTRA_QUADS];
 
-    // +0x12330
-    float colorCycleTimer;                     // +0x12330
-    uint8_t pad12334[4];                       // +0x12334
+    float colorCycleTimer;
 
-    // +0x12338: main overlay/status quad
-    TileIcon mainOverlayObj;                    // +0x12338
+    // main overlay/status quad
+    TileIcon mainOverlayObj;
 
-    // +0x12410: first byte past mainOverlayObj.
-    bool overlayClickFlag;                     // +0x12410 (set during touch, cleared on release)
-    bool startButtonClicked;                   // +0x12411 (set on successful release, read by game update)
-    uint8_t pad12412[6];                       // +0x12412
+    // first byte past mainOverlayObj.
+    bool overlayClickFlag;                     // (set during touch, cleared on release)
+    bool startButtonClicked;                   // (set on successful release, read by game update)
 
-    // +0x12418: indicator pair 1
-    TileIcon shopObjA;                    // +0x12418
-    TileIcon shopObjB;                    // +0x124F0
+    // indicator pair 1
+    TileIcon shopObjA;
+    TileIcon shopObjB;
 
-    // +0x125C8
-    bool shopEnabled;                      // +0x125C8
-    bool shopHighlight;                  // +0x125C9 (mirror during touch)
-    bool shopClicked;                    // +0x125CA (result flag, read by game update)
-    uint8_t pad125CB[5];                       // +0x125CB
+    bool shopEnabled;
+    bool shopHighlight;                  // (mirror during touch)
+    bool shopClicked;                    // (result flag, read by game update)
 
-    // +0x125D0: indicator pair 2
-    TileIcon leaderboardObjA;                    // +0x125D0
-    TileIcon leaderboardObjB;                    // +0x126A8
+    // indicator pair 2
+    TileIcon leaderboardObjA;
+    TileIcon leaderboardObjB;
 
-    // +0x12780
-    bool leaderboardEnabled;                      // +0x12780
-    bool leaderboardHighlight;                  // +0x12781 (mirror during touch)
-    bool leaderboardClicked;                    // +0x12782 (result flag, read by game update)
-    uint8_t pad12783[5];                       // +0x12783
+    bool leaderboardEnabled;
+    bool leaderboardHighlight;                  // (mirror during touch)
+    bool leaderboardClicked;                    // (result flag, read by game update)
 
-    // +0x12788: indicator pair 3
-    TileIcon achievementsObjA;                    // +0x12788
-    TileIcon achievementsObjB;                    // +0x12860
+    // indicator pair 3
+    TileIcon achievementsObjA;
+    TileIcon achievementsObjB;
 
-    // +0x12938
-    bool achievementsEnabled;                      // +0x12938
-    bool achievementsHighlight;                  // +0x12939 (mirror during touch)
-    bool achievementsClicked;                    // +0x1293A (result flag, read by game update)
-    uint8_t pad1293B[1];                       // +0x1293B
+    bool achievementsEnabled;
+    bool achievementsHighlight;                  // (mirror during touch)
+    bool achievementsClicked;                    // (result flag, read by game update)
 
-    // +0x1293C: particle/rotation speed (set in update)
-    float particleSpeed;                       // +0x1293C
-    float rotationSpeed;                       // +0x12940
-    float titleAnimState;                      // +0x12944
-    bool titleButtonPressed;                   // +0x12948
+    // particle/rotation speed (set in update)
+    float particleSpeed;
+    float rotationSpeed;
+    float titleAnimState;
+    bool titleButtonPressed;
 };

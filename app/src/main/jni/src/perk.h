@@ -11,15 +11,15 @@
 //   name lookup:    FUN_10004218c (returns DAT_10007e268[perkType*0x10])
 //
 // each Perk is a 0x1F0-byte object allocated via operator_new and pushed into
-// PlayerSystem.perks (the std::vector<Perk*> at +0x188). a Perk represents
+// PlayerSystem.perks (a std::vector<Perk*>). a Perk represents
 // a passive bonus the player has unlocked at some level; gameplay code
 // queries `playerSystem.perkLevel(perkType)` to scale stat-tile magnitudes,
 // open extra event slots, gate cell-predicate parity, etc.
 //
-// ---- runtime perk pool (DAT_10007e290..+0x300) ----
+// ---- runtime perk pool (DAT_10007e290, 0x300-byte span) ----
 // FUN_100041aa4 registers ~50 entries via FUN_10004223c, each entry a
 // (perkType, levelMax, unlockCost, line1, line2) tuple. perkTypes observed
-// in the binary (extracted from FUN_100041aa4 by Claude in a prior session):
+// in the binary:
 //
 //   0x01  "Gain N {A} per turn while your {H} is less than half max {H}"  (levels 5/12/20)
 //   0x02  "Gain N {A}{D} per discarded {H}"                                (levels 0/5/10)
@@ -94,11 +94,9 @@ public:
     void drawAt(float posX, float posY, uint8_t alpha);
 
     // --- byte-exact struct fields ---
-    int32_t  perkType;     // +0x000  index into the runtime pool (1..0x17)
-    int32_t  perkLevel;    // +0x004  current level (1..N), 0 = not owned
-    TileIcon icon1;        // +0x008..+0x0DF
-    TileIcon icon2;        // +0x0E0..+0x1B7
-    ColorTint tint;        // +0x1B8..+0x1EF
+    int32_t  perkType;     // index into the runtime pool (1..0x17)
+    int32_t  perkLevel;    // current level (1..N), 0 = not owned
+    TileIcon icon1;
+    TileIcon icon2;
+    ColorTint tint;
 };
-static_assert(sizeof(Perk) == 0x1F0,
-              "Perk must be exactly 0x1F0 bytes (binary uses operator_new(0x1F0))");

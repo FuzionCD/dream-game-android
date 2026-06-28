@@ -4,20 +4,20 @@
 
 // AUTO-EXTRACTED from the Dream binary's master achievement table at
 // DAT_10007d408. 50 entries x 0x28 bytes each. layout matches the binary 1:1:
-//   +0x00  iconX        (pixel column on the achievement-icon spritesheet,
+// iconX        (pixel column on the achievement-icon spritesheet,
 //                        always a multiple of 85)
-//   +0x04  iconY        (pixel row, multiple of 85)
-//   +0x08  sortKey      (display order in the AchievementsMenu, 1..50,
+// iconY        (pixel row, multiple of 85)
+// sortKey      (display order in the AchievementsMenu, 1..50,
 //                        accessed via FUN_10004d698)
-//   +0x0C  targetCount  (0 = one-shot; >0 = N-progress, the "M" in N/M,
+// targetCount  (0 = one-shot; >0 = N-progress, the "M" in N/M,
 //                        accessed via direct read at DAT_10007d414+idx*0x28)
-//   +0x10  assetKey     (internal / save-key identifier, e.g. "world_2";
+// assetKey     (internal / save-key identifier, e.g. "world_2";
 //                        used as the GameKit ID prefix on iOS;
 //                        accessor: FUN_10004d668)
-//   +0x18  title        (big display title shown on the tile, e.g.
+// title        (big display title shown on the tile, e.g.
 //                        "It Always Starts Like This";
 //                        accessor: FUN_10004d608)
-//   +0x20  description  (flavor / how-to text, e.g. "Reach world 2 on any
+// description  (flavor / how-to text, e.g. "Reach world 2 on any
 //                        difficulty"; accessor: FUN_10004d638)
 //
 // icon spritesheet layout (verified from FUN_10004d5c4): icons are 84x84 px
@@ -90,10 +90,6 @@ struct AchievementInfo {
     const char* title;
     const char* description;
 };
-
-static_assert(sizeof(AchievementInfo) == 0x28,
-              "AchievementInfo must be 0x28 bytes to match the binary's "
-              "table stride at DAT_10007d408.");
 
 // FUN_10004d5c4 hardcodes the icon display size; mirrored here so callers
 // (the menu's tile-icon Quad setSize) can refer to it by name.

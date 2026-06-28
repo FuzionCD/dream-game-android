@@ -4,21 +4,17 @@
 #include <cstdint>
 #include <list>
 
-// Payload type for the MovableActor move queue at +0x110. each queued entry
+// Payload type for the MovableActor move queue. each queued entry
 // is the target screen position (posX, posY) of one step in a multi-step
 // movement. listed in chronological order: front() = next step, back() =
 // final destination.
 struct MoveTarget {
-    float posX;   // +0x00
-    float posY;   // +0x04
+    float posX;
+    float posY;
 
     MoveTarget() : posX(0.0f), posY(0.0f) {}
     MoveTarget(float x, float y) : posX(x), posY(y) {}
 };
-static_assert(sizeof(MoveTarget) == 0x8,
-              "MoveTarget must be 8 bytes (matches binary's 8-byte node payload)");
-static_assert(sizeof(std::list<MoveTarget>) == 0x18,
-              "std::list head must be 24 bytes (libc++ aarch64)");
 
 // reconstructed from Ghidra:
 //   ctor:           FUN_100038b18 (called by PlayerSystem, TileContent,
@@ -29,7 +25,7 @@ static_assert(sizeof(std::list<MoveTarget>) == 0x18,
 // MovableActor is the shared 0x134-byte base class for the game's animatable
 // entities: anything that has a Quad sprite, lives at a position, can spawn
 // in / move along a path / fade / scale-out, and tracks its own movement
-// queue. Subclasses extend this with their own state starting at +0x134.
+// queue. Subclasses extend this with their own state beyond the base.
 //
 // vtable in the binary: PTR_FUN_100074660 (overridden per subclass to e.g.
 // PTR_FUN_1000743e0 for TileContent or PTR_FUN_1000746e0 for SnagContent).
@@ -47,8 +43,9 @@ static_assert(sizeof(std::list<MoveTarget>) == 0x18,
 //   [4] 0x100038ec4, setPosition (writes baseQuad.posX/Y from a float pair).
 //                    overridden by TileContent (0x100014a40), SnagContent
 //                    (0x10003dc38 = SnagContent::setPosition, ported).
-//   [5] 0x100038f64, TBD, base. overridden by TileContent (0x100014b24),
-//                    SnagContent (0x10003dd80).
+//   [5] 0x100038f64, setAlpha: writes the alpha byte across baseQuad's 4
+//                    vertices (preserving RGB). overridden by TileContent
+//                    (0x100014b24), SnagContent (0x10003dd80).
 //   [6] null,        fade-stage hook. overridden by TileContent
 //                    (0x100014b84 = the squish/scale-down + ColorTint scale)
 //                    and SnagContent (0x10003de0c = call vtable[5] with alpha
@@ -71,38 +68,38 @@ static_assert(sizeof(std::list<MoveTarget>) == 0x18,
 //      for now).
 //
 // Shared base layout:
-//   +0x000  vtable                (8 bytes)
-//   +0x008  visible               (1 byte) + 7 bytes pad
-//   +0x010  baseQuad              (0xD8 bytes, the rendered sprite; the
+// vtable                (8 bytes)
+// visible               (1 byte) + 7 bytes pad
+// baseQuad              (0xD8 bytes, the rendered sprite; the
 //                                   trailing 0x10 holds the Quad's animation
 //                                   target rect, see quad.h)
-//   +0x0E8  gridCol               (4 bytes, placed-on-board hex column,
+// gridCol               (4 bytes, placed-on-board hex column,
 //                                   cached from the parent TileObject's
-//                                   +0xE8/+0xEC by initBase via 8-byte copy
+//                                   gridCol/gridRow by initBase via 8-byte copy
 //                                   from `*parent_ptr`. then re-synced by
 //                                   FUN_10001349c at every page-commit so
 //                                   sub-actors track their parent's hex coord.
 //                                   initBase copies the pointed-to 8 bytes,
 //                                   not the pointer itself.)
-//   +0x0EC  gridRow               (4 bytes, paired with gridCol above)
-//   +0x0F0  spawnT                (4 bytes, init 1.0 = "no spawn anim pending")
-//   +0x0F4  spawnFromX            (4 bytes)
-//   +0x0F8  spawnFromY            (4 bytes)
-//   +0x0FC  spawnToX              (4 bytes)
-//   +0x100  spawnToY              (4 bytes)
-//   +0x104  moveT                 (4 bytes, init 1.0 = "no move anim pending")
-//   +0x108  moveFromX        (4 bytes)
-//   +0x10C  moveFromY        (4 bytes)
-//   +0x110  moveQueue             (24 bytes, std::list<MoveTarget> head:
+// gridRow               (4 bytes, paired with gridCol above)
+// spawnT                (4 bytes, init 1.0 = "no spawn anim pending")
+// spawnFromX            (4 bytes)
+// spawnFromY            (4 bytes)
+// spawnToX              (4 bytes)
+// spawnToY              (4 bytes)
+// moveT                 (4 bytes, init 1.0 = "no move anim pending")
+// moveFromX             (4 bytes)
+// moveFromY             (4 bytes)
+// moveQueue             (24 bytes, std::list<MoveTarget> head:
 //                                   sentinel.prev / sentinel.next / size)
-//   +0x128  moveStepRate          (4 bytes, pace multiplier on the
+// moveStepRate          (4 bytes, pace multiplier on the
 //                                   move-anim's per-frame moveT advance.
 //                                   stepToward writes (float)moveQueue.size()
 //                                   here; the move-anim reads it as
 //                                   `(dt / 0.3) * moveStepRate`.
 //                                   larger = faster animation.)
-//   +0x12C  fadeT                 (4 bytes, init 1.0)
-//   +0x130  scaleOutT             (4 bytes, init 1.0)
+// fadeT                 (4 bytes, init 1.0)
+// scaleOutT             (4 bytes, init 1.0)
 //
 // Total: 0x134 bytes.
 
@@ -180,29 +177,28 @@ public:
     virtual void onScaleOut(float scaleOutT) { (void)scaleOutT; }
 
     // ---- byte-exact base class layout ----
-    // implicit C++ vtable pointer occupies +0x00..+0x07 (the binary's
-    // vtable slot). visible follows at +0x008; the rest of the layout
+    // implicit C++ vtable pointer occupies the first 8 bytes (the binary's
+    // vtable slot). visible follows it; the rest of the layout
     // matches the binary byte-for-byte.
-    bool visible;                  // +0x008
-    uint8_t pad009[7];             // +0x009..+0x00F
-    Quad baseQuad;                 // +0x010..+0x0E7 (0xD8, owns anim rect at +0xD8)
-    int gridCol;                   // +0x0E8 (cached from parent at initBase, re-synced at commit)
-    int gridRow;                   // +0x0EC
-    float spawnT;                  // +0x0F0
-    float spawnFromX;              // +0x0F4
-    float spawnFromY;              // +0x0F8
-    float spawnToX;                // +0x0FC
-    float spawnToY;                // +0x100
-    float moveT;                   // +0x104
-    float moveFromX;               // +0x108
-    float moveFromY;               // +0x10C
+    bool visible;
+    Quad baseQuad;                 // (0xD8, owns its anim rect)
+    int gridCol;                   // (cached from parent at initBase, re-synced at commit)
+    int gridRow;
+    float spawnT;
+    float spawnFromX;
+    float spawnFromY;
+    float spawnToX;
+    float spawnToY;
+    float moveT;
+    float moveFromX;
+    float moveFromY;
     // pending-move queue (std::list head, 24 bytes total). populated by
     // stepToward() with target (posX, posY) entries; the move stage drains
     // it from the front each time animT hits 1.0.
-    std::list<MoveTarget> moveQueue;  // +0x110..+0x127
-    float moveStepRate;            // +0x128
-    float fadeT;                   // +0x12C
-    float scaleOutT;               // +0x130
+    std::list<MoveTarget> moveQueue;
+    float moveStepRate;
+    float fadeT;
+    float scaleOutT;
 };
 
 // the binary's MovableActor stores 0x134 bytes of fields, but C++ rounds the
@@ -210,7 +206,6 @@ public:
 // alignment is 8 (void*, int64_t). this matches the binary; `sizeof` is the
 // same on iOS clang. inheritance later compresses derived classes back: the
 // C++ tail-padding rule lets a subclass's first data member occupy the base's
-// trailing 4 bytes, so e.g. PlayerSystem's characterIndex lands at +0x134
-// (not +0x138). composition does not get this optimization.
-static_assert(sizeof(MovableActor) == 0x138,
-              "MovableActor type size must be 0x138 (0x134 useful fields + 4 bytes trailing alignment padding)");
+// trailing 4 bytes, so e.g. PlayerSystem's characterIndex reuses the base's
+// trailing padding instead of starting after it. composition does not get
+// this optimization.

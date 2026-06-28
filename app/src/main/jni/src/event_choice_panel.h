@@ -23,38 +23,36 @@ class PlayerSystem;
 //   setSlotSelected:    FUN_10000eb2c
 //   close:              FUN_10000f66c
 //
-// EventChoicePanel lives at GameBoard+0xB2A8 (size 0x1510 bytes). it's a
+// EventChoicePanel lives at GameBoard.eventChoicePanel (size 0x1510 bytes). it's a
 // Menu-derived popup that presents 1..4 candidate Events to the player at
 // pick-time (typically Eventful-perk reward, Spirit Drain snag, etc.).
 // when the player taps confirm, onConfirmTapped writes the selected slot's
-// EventSlot* into `selectedEventOnConfirm` (+0x14E8 = GameBoard+0xC790);
+// EventSlot* into `selectedEventOnConfirm`;
 // gameBoardUpdate then polls that field, clones the source event via
 // operator_new(0xDD0) + EventSlot::init, calls hud.addEventSlot, and
 // calls panel.close() to clear the queue.
 //
 // per-slot stride 0x430 bytes, structurally identical to ItemChoiceSlot:
-//   +0x000  EventSlot* slotPtr (owning ptr; freed in panel dtor)
-//   +0x008  Label   labelDefault   (atlas (488, 81) chrome)
-//   +0x0A0  Label   labelSelected  (atlas (530, 81) chrome)
-//   +0x138  TextItem titleText      (slot.event.getName())
-//   +0x1C0  TextItem descText[0]    (slot.event.getDescriptionLine(0))
-//   +0x248  TextItem descText[1]
-//   +0x2D0  TextItem descText[2]    (always "", wide-margin slack)
-//   +0x358  Quad     iconQuad       (per-Event icon, drawn under labelSelected)
+// EventSlot* slotPtr (owning ptr; freed in panel dtor)
+// Label   labelDefault   (atlas (488, 81) chrome)
+// Label   labelSelected  (atlas (530, 81) chrome)
+// TextItem titleText      (slot.event.getName())
+// TextItem descText[0]    (slot.event.getDescriptionLine(0))
+// TextItem descText[1]
+// TextItem descText[2]    (always "", wide-margin slack)
+// Quad     iconQuad       (per-Event icon, drawn under labelSelected)
 // total: 0x430 bytes.
 
 class EventChoiceSlot {
 public:
     // ---- per-slot layout ----
-    EventSlot* slotPtr;            // +0x000  owning ptr; null = empty slot
-    Label      labelDefault;       // +0x008..+0x09F  "unselected" chrome frame
-    Label      labelSelected;      // +0x0A0..+0x137  "selected" chrome frame
-    TextItem   titleText;          // +0x138..+0x1BF
-    TextItem   descText[3];        // +0x1C0..+0x357  (slot 2 always empty)
-    Quad       iconQuad;           // +0x358..+0x42F
+    EventSlot* slotPtr;            // owning ptr; null = empty slot
+    Label      labelDefault;       // "unselected" chrome frame
+    Label      labelSelected;      // "selected" chrome frame
+    TextItem   titleText;
+    TextItem   descText[3];        // (slot 2 always empty)
+    Quad       iconQuad;
 };
-static_assert(sizeof(EventChoiceSlot) == 0x430,
-              "EventChoiceSlot must be exactly 0x430 bytes");
 
 class EventChoicePanel : public Menu {
 public:
@@ -126,16 +124,16 @@ public:
 
     // ---- byte-exact field landmarks ----
 
-    // Menu base (+0x000..+0x41F) owns the panel chrome.
+    // Menu base owns the panel chrome.
 
     // pointer back to GameBoard::detailPanel; used by update()'s tap path
     // to pop up the event-detail card (event name + descriptions).
-    DetailPanel* heldItemRef;                  // +0x420
+    DetailPanel* heldItemRef;
 
     static constexpr int MAX_SLOT_COUNT = 4;
-    EventChoiceSlot slots[MAX_SLOT_COUNT];     // +0x428..+0x14E7
+    EventChoiceSlot slots[MAX_SLOT_COUNT];
 
-    // ---- tail (+0x14E8..+0x150F): panel state ----
+    // ---- tail: panel state ----
 
     // when the player taps confirm with an event selected, the binary
     // writes the selected slot's EventSlot* here. gameBoardUpdate polls
@@ -143,21 +141,20 @@ public:
     // (eventType, currentCharges + Eventful-perk magnitude bonus) from
     // the source pointer, calls hud.addEventSlot, then close() clears
     // this field back to null.
-    EventSlot* selectedEventOnConfirm;        // +0x14E8
+    EventSlot* selectedEventOnConfirm;
 
-    int32_t slotCount;                         // +0x14F0  (1..4 active candidates)
-    int32_t selectedSlot;                      // +0x14F4  (-1 = no selection)
+    int32_t slotCount;                         // (1..4 active candidates)
+    int32_t selectedSlot;                      // (-1 = no selection)
 
     // "rejected-history" set: EventKinds the panel has shown but the
     // player has dismissed. each open() folds the current tray + this
     // history into the exclusion set used by candidate-roll. binary uses
-    // a std::set<int> at +0x14F8 (libc++ aarch64 layout: 16-byte sentinel
+    // a std::set<int> (libc++ aarch64 layout: 16-byte sentinel
     // + 8-byte size = 0x18 bytes, matches exactly).
     //
     // not currently populated by anything in our port (the binary's
     // close-without-pick path adds to it; TBD when that's wired up).
-    std::set<int> excludedHistory;             // +0x14F8..+0x150F
-};
 
-static_assert(sizeof(EventChoicePanel) == 0x1510,
-              "EventChoicePanel must be exactly 0x1510 bytes");
+    // TODO what's the deal with this?
+    std::set<int> excludedHistory;
+};

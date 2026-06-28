@@ -106,7 +106,7 @@ void EventChoicePanel::init(DetailPanel* heldItemRefIn) {
     selectedSlot           = -1;
     // excludedHistory is a std::set<int>, default-constructed empty by
     // GameBoard's create() path. binary's manual sentinel-byte writes at
-    // +0x14F8 are equivalent (libc++ aarch64 layout matches).
+    // are equivalent (libc++ aarch64 layout matches).
 }
 
 // FUN_10000e6d4, EventChoicePanel::draw.

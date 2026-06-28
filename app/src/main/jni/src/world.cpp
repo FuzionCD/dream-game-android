@@ -178,7 +178,7 @@ void World::construct() {
 
         // write the unselected text position, then snap it to the pixel grid
         // (FUN_1000573a8 = snapToPixelGrid) before mirroring the snapped pair
-        // onto the selected text quad (binary copies +0x1c88 -> +0x1d60 post-snap).
+        // onto the selected text quad.
         diffButtons[i].unselectedText.quad.posX = frameCenterX;
         diffButtons[i].unselectedText.quad.posY = textPosY;
         diffButtons[i].unselectedText.quad.snapToPixelGrid();
@@ -248,7 +248,7 @@ void World::generate(uint32_t newWorldIndex, std::set<int>& tileTypeSet) {
 
     float virtualHeight = Renderer::getVirtualHeight();
 
-    // background overlay at +0x08
+    // background overlay
     backgroundOverlay.quad = Quad();
     setQuadAlpha(backgroundOverlay.quad, 0xFF);
     backgroundOverlay.quad.posX = 0.5f;

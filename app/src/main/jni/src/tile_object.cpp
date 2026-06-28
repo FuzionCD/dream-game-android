@@ -40,8 +40,8 @@ constexpr float PIXEL_SNAP_DENOM = 640.0f;        // DAT_10005a730 (snap-to-pixe
 // the binary memsets the buffer first (via operator_new initializer in some
 // callers, or relies on prior zeroing), then calls Quad::ctor twice and seeds
 // a handful of fields. our caller (GameBoard::create) memsets to 0 before
-// calling init(), matching that contract, including the std::vector slot at
-// +0x210, which we reconstruct via placement-new below.
+// calling init(), matching that contract, including the std::vector slot
+// (trackedContent), which we reconstruct via placement-new below.
 void TileObject::init() {
     // ---- reset the two embedded Quads ----
     // each Quad's ctor (FUN_100007d78) sets vtable, unit-quad vertices, and
@@ -51,47 +51,42 @@ void TileObject::init() {
 
     // ---- post-Quad-ctor field setup, line-by-line from FUN_1000120ec ----
     // (offsets translated to named fields)
-    gridLayout          = 0;        // +0xD8 (set by setHexUVs later)
-    gridIdx             = 0;        // +0xDC
-    mirror              = false;    // +0xE0
-    std::memset(pad0E1, 0, sizeof(pad0E1));
-    rotationStep        = 0;        // +0xE4
-    gridCol             = 0;        // +0xE8 (set by setGridCoord at commit)
-    gridRow             = 0;        // +0xEC
-    std::memset(pad0F1, 0, sizeof(pad0F1));
+    gridLayout          = 0;        // (set by setHexUVs later)
+    gridIdx             = 0;
+    mirror              = false;
+    rotationStep        = 0;
+    gridCol             = 0;        // (set by setGridCoord at commit)
+    gridRow             = 0;
 
     // 1.0 init sets all four anim timers to "idle" (no animation pending).
-    iconFadeT           = 1.0f;     // +0x1D0
-    slideAnimActive     = false;    // +0x1D4
-    slideImmediate      = false;    // +0x1D5
-    slideFlag           = false;    // +0x1D6
-    pad1D7              = 0;
+    iconFadeT           = 1.0f;
+    slideAnimActive     = false;
+    slideImmediate      = false;
+    slideFlag           = false;
     slideStartPos[0]    = 0.0f;
     slideStartPos[1]    = 0.0f;
     slideTargetPos[0]   = 0.0f;
     slideTargetPos[1]   = 0.0f;
-    slideTimer          = 1.0f;     // +0x1E8
-    slideDelay          = 0.0f;     // +0x1EC
-    rotationLerpStart   = 0.0f;     // +0x1F0
-    rotationLerpTarget  = 0.0f;     // +0x1F4
-    rotationLerpT       = 1.0f;     // +0x1F8
-    std::memset(pad1FC, 0, sizeof(pad1FC));
+    slideTimer          = 1.0f;
+    slideDelay          = 0.0f;
+    rotationLerpStart   = 0.0f;
+    rotationLerpTarget  = 0.0f;
+    rotationLerpT       = 1.0f;
 
-    content             = nullptr;  // +0x200
-    snagContent         = nullptr;  // +0x208
+    content             = nullptr;
+    snagContent         = nullptr;
 
     // GameBoard's allocator memset'd the whole region to 0, which trampled
     // the std::vector internals. placement-new gives us a fresh empty vector
     // with valid begin/end/cap = nullptr, matching the binary's state after
-    // its own ctor (which leaves +0x210/+0x218/+0x220 = 0).
+    // its own ctor (which leaves the vector's begin/end/cap = 0).
     new (&trackedContent) std::vector<SnagContent*>();
 
-    // decoration list at +0x228. same memset situation as trackedContent, so
+    // decoration list. same memset situation as trackedContent, so
     // placement-new a fresh empty std::list to reconstruct the libc++ head.
     new (&decorations) std::list<DecorationValue>();
-    rotationAnimT      = 0.0f;       // +0x240
-    rotationAnimActive = false;      // +0x244
-    std::memset(pad245, 0, sizeof(pad245));
+    rotationAnimT      = 0.0f;
+    rotationAnimActive = false;
 
     // FUN_1000120ec then configures the icon Quad's UV / size / alpha. these
     // are the defaults that get overwritten when setVisual / setSnagVisual
@@ -134,7 +129,7 @@ TileObject::~TileObject() {
 //      tile's TileContent / SnagContent over the hex face, unless a
 //      Darkness ("?") decoration is active, in which case content stays
 //      hidden.
-//   5. iterate decoration list at +0x230..+0x228, draw each iconSubQuad
+//   5. iterate the decoration list, draw each iconSubQuad
 //      (bind tex 8 per node) plus the embedded ColorTint when value > 0
 //      (kind=2 numeric overlay).
 //   6. pop matrix if rotation push fired.
@@ -297,8 +292,8 @@ void TileObject::update(float dt) {
     // 5. content / snagContent / trackedContent vtable[3] dispatch.
     //
     // matches FUN_1000124ac's three sub-blocks:
-    //   `if (*+0x200) (*vtable[3])(*+0x200);`           TileContent (= content)
-    //   for each entry in vector<+0x210, +0x218>:        trackedContent[*]
+    //   `if (content) (*vtable[3])(content);`           TileContent (= content)
+    //   for each entry in trackedContent:               trackedContent[*]
     //       `(*vtable[3])(entry);`                       SnagContent::update
     //
     // both TileContent and SnagContent inherit MovableActor::update, which
@@ -368,7 +363,7 @@ void TileObject::update(float dt) {
 
 // reconstructed from Ghidra FUN_1000133b0
 int TileObject::getContentType() {
-    if (content && /* visible byte at MovableActor +0x08 */
+    if (content && /* visible byte at MovableActor */
         *((uint8_t*)content + 8) != 0) {
         return content->type;
     }
@@ -435,7 +430,7 @@ bool TileObject::hasActiveDecorationOfKind(int kind) const {
 
 // reconstructed from Ghidra FUN_100013c3c. same walk shape as
 // hasActiveDecorationOfKind but returns the matched decoration's `value`
-// (+0xF8) instead of bool.
+// instead of bool.
 int TileObject::decorationValueOfKind(int kind) const {
 
     for (const DecorationValue& d : decorations) {
@@ -453,7 +448,7 @@ int TileObject::decorationValueOfKind(int kind) const {
 // asks "does this tile have an exit edge in direction `dir` (0..5) given
 // base rotation `baseRot`?". the binary's mirror flag negates each exit via
 // `5 - exit`, then `(exit + baseRot) % 6` is matched against `dir`.
-// passing baseRot=-1 substitutes the tile's own rotationStep (+0xE4).
+// passing baseRot=-1 substitutes the tile's own rotationStep.
 bool TileObject::permitsDirection(int dir, int baseRot) const {
 
     if (baseRot == -1) {
@@ -484,7 +479,7 @@ SnagContent* TileObject::getSnagIfAlive() {
         return nullptr;
     }
 
-    // visible byte at MovableActor +0x08
+    // visible byte at MovableActor
     if (*((uint8_t*)snagContent + 8) == 0) {
         return nullptr;
     }
@@ -553,7 +548,7 @@ int TileObject::getContentMagnitude() {
 // `mirror=1` triggers FUN_100008430 which swaps U coords between vert pairs
 // (horizontal mirror of the hex sprite, used to break up visual repetition).
 //
-// also frees content (+0x200) / snagContent (+0x208) and clears the
+// also frees content / snagContent and clears the
 // trackedContent vector; the binary does this so that re-rolling a tile
 // drops all its sub-data.
 void TileObject::setHexUVs(int _gridLayout, int _gridIdx, int mirror, int rotationStep) {
@@ -593,14 +588,14 @@ void TileObject::setHexUVs(int _gridLayout, int _gridIdx, int mirror, int rotati
     this->rotationStep = rotationStep;
 
     // rotationStep rotates the hex face by 60 deg increments (6 values: 0..300 deg).
-    // the binary writes both mainQuad.rotation (+0xC0) and iconQuad.rotation
-    // (+0x1B8 = iconQuad's +0xC0) so the icon overlay rotates with the face.
+    // the binary writes both mainQuad.rotation and iconQuad.rotation
+    // so the icon overlay rotates with the face.
     float rotDeg = (float)rotationStep * HEX_ROT_PER_STEP;
     mainQuad.rotation = rotDeg;
     iconQuad.rotation = rotDeg;
 
     // free existing content/snagContent (they hold heap allocations). matches
-    // the binary's "if (*+0x200) vtable[1](); *+0x200 = 0;" pattern.
+    // the binary's "if (content) vtable[1](); content = 0;" pattern.
 
     if (content) {
         delete content;
@@ -613,7 +608,7 @@ void TileObject::setHexUVs(int _gridLayout, int _gridIdx, int mirror, int rotati
     }
 
     // empty the tracked-content vector (it was tracking now-freed allocations).
-    // matches the binary's `*(this+0x218) = ((this+0x210) & ~7)` collapse.
+    // matches the binary's "end = begin" vector collapse.
     trackedContent.clear();
 }
 
@@ -622,9 +617,7 @@ void TileObject::setHexUVs(int _gridLayout, int _gridIdx, int mirror, int rotati
 // sets the main hex's screen position, snaps to the 1/640 pixel grid (matches
 // FUN_1000573a8), then propagates:
 //   - the icon-quad's screen position (mirrors mainQuad pos + ICON_POS_OFFSET
-//     into the iconQuad's own pos slot; the binary writes via the +0x1A0
-//     mirror which is iconQuad.posX/posY since iconQuad starts at +0xF8 and
-//     Quad.posX is at +0xA8, so 0xF8 + 0xA8 = 0x1A0).
+//     into the iconQuad's own pos slot, iconQuad.posX/posY).
 //   - decoration list nodes' attachment positions + their ColorTints
 //   - content / snagContent's vtable[4] (their own setPosition).
 void TileObject::setPosition(float x, float y) {
@@ -679,15 +672,15 @@ void TileObject::setPosition(float x, float y) {
 
 // reconstructed from Ghidra FUN_10001349c.
 //
-// writes the placed-on-board coord to the tile's +0xE8/+0xEC, then propagates
-// the same pair to TileContent's +0xE8/+0xEC and SnagContent's +0xE8/+0xEC if
-// either is alive (visible byte at +0x8 set). the binary writes 8 bytes
+// writes the placed-on-board coord to the tile's gridCol/gridRow, then propagates
+// the same pair to TileContent's and SnagContent's grid coords if
+// either is alive (visible byte set). the binary writes 8 bytes
 // atomically; we split into two int writes with the same semantics.
 void TileObject::setGridCoord(int col, int row) {
     gridCol = col;
     gridRow = row;
 
-    // alive check uses MovableActor::visible at +0x008. only sub-actors that
+    // alive check uses MovableActor::visible. only sub-actors that
     // are currently visible take the propagated coord, matching the binary's
     // `*(char *)(lVar1 + 8) != '\0'` gate.
     if (content && content->visible) {
@@ -705,8 +698,8 @@ void TileObject::setGridCoord(int col, int row) {
 // stagger=slot*0.05. setting iconFadeT=0 starts the icon fade-in.
 void TileObject::setRackPosition(float slideDelayArg, const float* targetPos,
                                  bool immediate, bool flag) {
-    // mirror current position into slideStartPos (binary copies posX/posY
-    // pair from mainQuad +0xA8/+0xAC into +0x1D8/+0x1DC).
+    // mirror current position into slideStartPos (binary copies mainQuad's
+    // posX/posY pair into slideStartPos).
     slideStartPos[0]  = mainQuad.posX;
     slideStartPos[1]  = mainQuad.posY;
     slideTargetPos[0] = targetPos[0];
@@ -858,7 +851,7 @@ void TileObject::transformToSnag(uint32_t snagKind, PlayerSystem* player,
         snagContent = nullptr;
     }
 
-    // binary shrinks vector to size 0 (`*(this+0x218) = (this+0x210)`).
+    // binary shrinks vector to size 0 (end = begin).
     trackedContent.clear();
 
     SnagContent* sc = new SnagContent();
@@ -895,8 +888,7 @@ void TileObject::erase() {
 void TileObject::setTileContent(uint32_t type, int magnitude) {
 
     if (content) {
-        // binary's `(**(code **)(**(long **)(param_1 + 0x200) + 8))()`:
-        // dispatches vtable[1] (placement dtor) on the existing content.
+        // the binary dispatches vtable[1] (placement dtor) on the existing content.
         // C++ delete drives the same destruction sequence.
         delete content;
     }
@@ -1004,7 +996,7 @@ void TileObject::attachSnag(SnagContent* sc) {
 // reconstructed from Ghidra FUN_100013870 (insert) + FUN_1000140b8 (alloc).
 //
 // sorted-by-kind doubly-linked-list insert into the decoration list at
-// +0x228. three per-kind paths (UV / size / pos / sound), plus an existing-
+// three per-kind paths (UV / size / pos / sound), plus an existing-
 // node update path that toggles `suppressed` and re-seeds the alpha lerp.
 //
 // never reached on level 1 (the only Phase 3 caller is populateRack's

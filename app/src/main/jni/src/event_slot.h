@@ -33,15 +33,15 @@
 // install path (game_board.cpp:3417 uses the legacy "item display" label;
 // the ctor at FUN_100029a28 confirms it's actually an event install).
 //
-// EventSlots are owned by the typed EventChoicePanel (GameBoard+0xB2A8): its
+// EventSlots are owned by the typed EventChoicePanel (GameBoard.eventChoicePanel): its
 // slots[].slotPtr hold the candidate events while the picker is open. once an
-// event is installed, the HUD's typed eventTray[4] (HUD+0x1BC8) references it
+// event is installed, the HUD's typed eventTray[4] references it
 // via eventTray[i].slotPtr. both holders carry the per-slot display TextItems
 // for the event's name and bonus descriptions.
 //
 // note on the variable-length child arrays: storage is fixed-size 7
-// entries each (asserted by the ctor's loop bounds 0x1C0..0x5E8 and
-// 0x6D0..0xCF0 stride 0xD8 / 0xE0). chargesMax (<= 7) controls how many
+// entries each (confirmed by the ctor's init loops, stride 0xD8 / 0xE0).
+// chargesMax (<= 7) controls how many
 // are used for hit-test / draw / dim+reset color updates; the rest stay
 // default-Quad.
 
@@ -121,10 +121,9 @@ struct EventSlot {
 
     int     eventType;             // set by ctor from param_2 (0..4)
     int     chargesMax;            // capacity, looked up from
-                                   // DAT+eventType*0x28+0x4. <= 7.
+                                   // EVENT_TABLE[eventType].chargesMax. <= 7.
     int     currentCharges;        // filled-charge count.
                                    // locked iff currentCharges < chargesMax.
-    uint8_t pad00C[4];             // padding to 0x10 alignment
 
     TileIcon mainQuad;             // hit-test target + main category icon
                                    // (per-EventKey: Experience / Health /
@@ -147,10 +146,9 @@ struct EventSlot {
     // cleared by the dispatcher that consumes the event on confirm /
     // by the panel cancel path. while non-zero, tickAnimation lerps
     // hoverState += dt / 0.1s (clamped 0..1); when zero, lerps back down.
-    uint8_t  awaitingTileSelection;   // +0x7A8 (ctor writes 0)
-    uint8_t  pad7A9[3];               // +0x7A9..+0x7AB
+    uint8_t  awaitingTileSelection;   // (ctor writes 0)
 
-    float    hoverState;           // +0x7AC (ctor writes 0.0f). when > 0,
+    float    hoverState;           // (ctor writes 0.0f). when > 0,
                                    // contains() shifts touch Y by
                                    // hoverState * -0.015625f.
 
@@ -158,23 +156,16 @@ struct EventSlot {
     // chargeSlot once that slot is filled. shared author idiom with
     // MarkerSlot (gameplay_hud.h) and SpecialAbility (item.h): a Quad
     // followed by 8 bytes of trailing (alpha float + 4-byte pad). the
-    // Quad itself owns its animation-target 0x10 at +0xC8..+0xD7; alpha
-    // sits immediately after at +0xD8. addCharge() resets scaleX/Y +
+    // Quad itself owns its 0x10-byte animation-target rect; alpha sits
+    // immediately after the Quad. addCharge() resets scaleX/Y +
     // alpha to 0 on the newly-filled slot so the update path tweens
     // them into view.
     struct ChargeMarker {
-        Quad    quad;              // +0x00..+0xD7 (0xD8 bytes)
-        float   alpha;             // +0xD8 (init 1.0f)
-        uint8_t pad2[4];           // +0xDC..+0xDF
+        Quad    quad;              // (0xD8 bytes)
+        float   alpha;             // (init 1.0f)
     };
 
     ChargeMarker chargeMarkers[7]; // fixed-size, same usage rule as
                                    // chargeSlots (first chargesMax used);
                                    // only [0, currentCharges) are drawn.
 };
-
-static_assert(sizeof(EventSlot::ChargeMarker) == 0xE0,
-              "EventSlot::ChargeMarker must be 0xE0 bytes (matches MarkerSlot stride)");
-static_assert(sizeof(EventSlot) == 0xDD0,
-              "EventSlot must be exactly 0xDD0 bytes "
-              "(matches FUN_100018ac8's operator_new(0xDD0) call site)");

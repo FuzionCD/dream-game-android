@@ -21,7 +21,7 @@
 //                    colors)
 //
 // our port collapses both into init(), called once from Game::create after
-// placement-new restores RAII state. the coldStartFlag at +0x0 stays
+// placement-new restores RAII state. the coldStartFlag stays
 // vestigial; we run init unconditionally instead of guarding on it.
 void AchievementsMenu::init() {
     Game* game = getGame();
@@ -194,7 +194,7 @@ void AchievementsMenu::open() {
     // ---- 0. first-open per-tile TextItem fill ----
     //
     // matches FUN_100058410 first half. all 3 TextItems use bmfontTable(0)
-    // (panel font, game+0x10). title scale 0.08 / desc scale 0.065 /
+    // (panel font). title scale 0.08 / desc scale 0.065 /
     // progressText scale 0.06. description shrinks-to-fit when renderedWidth
     // would exceed 490/640 at base scale.
     if (coldStartFlag == 0) {

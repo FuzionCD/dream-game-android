@@ -26,15 +26,14 @@ class PlayerSystem;
 // in SPECIAL_ABILITY_POOL (item_data_table.h, mirroring DAT_100079da0).
 
 struct SpecialAbility {
-    int32_t abilityType;    // +0x00 (RNG-selected stat type in the binary;
+    int32_t abilityType;    // (RNG-selected stat type in the binary;
                             //        index into the DAT_100079da0 pool)
-    int32_t abilityVal;     // +0x04 (RNG-selected magnitude shown in "+%d ...")
-    Quad    iconQuad;       // +0x08..+0xDF (0xD8; owns anim rect at +0xD0;
+    int32_t abilityVal;     // (RNG-selected magnitude shown in "+%d ...")
+    Quad    iconQuad;       // (0xD8; owns its anim rect internally;
                             //               UV (0.519, 0.200)..(0.558, 0.239),
                             //               size 0.0625; shared icon set by
                             //               FUN_100032a74 for both slots)
 };
-static_assert(sizeof(SpecialAbility) == 0xE0, "SpecialAbility must be exactly 0xE0 bytes");
 
 class Item {
 public:
@@ -85,7 +84,6 @@ public:
     // FUN_100033440. binary looks up
     //   pool[type][subType][cosmeticNameIdx]
     // and falls through to "Strange Object" when the inner vector is empty.
-    // our port returns the fallback until the cosmetic name pool is ported.
     const char* getName() const;
 
     // FUN_100033484. returns descLine[lineIdx]. line 2+ -> empty string.
@@ -118,15 +116,15 @@ public:
     // --- byte-exact struct fields ---
 
     // ---- header (0x000..0x047) ----
-    int32_t type;             // +0x000  (0=ATK, 1=HP, 2=DEF; confirms via per-type
+    int32_t type;             // (0=ATK, 1=HP, 2=DEF; confirms via per-type
                               //          stat-block init in starter Items at level-load)
-    int32_t subType;          // +0x004  (cosmetic flavor; init -1, rolled in init via
+    int32_t subType;          // (cosmetic flavor; init -1, rolled in init via
                               //          rngInt(0, 55, 2) for type 0/1; rngInt(0, 44, 2)
                               //          for type 2)
-    int32_t atk;              // +0x008
-    int32_t def;              // +0x00C
-    int32_t hp;               // +0x010  HP-capacity boost; sums into PlayerSystem.baseHP
-    int32_t cosmeticNameIdx;  // +0x014  index into the subType's cosmetic name vector
+    int32_t atk;
+    int32_t def;
+    int32_t hp;               // HP-capacity boost; sums into PlayerSystem.baseHP
+    int32_t cosmeticNameIdx;  // index into the subType's cosmetic name vector
                               //         (DAT_10007e220 + type*0x18 -> vector<vector<char*>>).
                               //         binary's Item::getName looks up
                               //         pool[type][subType][cosmeticNameIdx]; returns
@@ -136,26 +134,24 @@ public:
     // sprintf's the SpecialAbility name template (with magnitude) into a
     // scratch buffer then assigns into these. binary's getDescriptionLine
     // (FUN_100033484) returns descLine[lineIdx] (line 2+ = "").
-    std::string descLine[2];  // +0x018..+0x047 (libc++ std::string = 0x18 each)
+    std::string descLine[2];  // (libc++ std::string = 0x18 each)
 
     // ---- 4 icon TileIcons (0xD8 each) ----
-    // the binary inits these via thunk_FUN_100007d78 at offsets +0x48, +0x120,
-    // +0x1F8, +0x2D0. UVs/sizes/positions are set by gameplay code (item-spawn
-    // helpers we haven't ported); they stay at default 0..1 UV until then.
-    TileIcon icon1;           // +0x048..+0x11F
-    TileIcon icon2;           // +0x120..+0x1F7
-    TileIcon icon3;           // +0x1F8..+0x2CF
-    TileIcon icon4;           // +0x2D0..+0x3A7
+    // the binary inits all four via thunk_FUN_100007d78. UVs/sizes/positions
+    // stay at default 0..1 UV until they're set by gameplay code.
+    TileIcon icon1;
+    TileIcon icon2;
+    TileIcon icon3;
+    TileIcon icon4;
 
     // ---- 3 ColorTints (0x38 each) ----
-    ColorTint tint1;          // +0x3A8..+0x3DF
-    ColorTint tint2;          // +0x3E0..+0x417
-    ColorTint tint3;          // +0x418..+0x44F
+    ColorTint tint1;
+    ColorTint tint2;
+    ColorTint tint3;
 
     // ---- 2 SpecialAbility slots (0xE0 each) ----
     // populated at construction by an RNG draw from the per-type pool at
     // DAT_100079da0 (entries 1..6 for type 0, 7..12 for type 1, 13..18 for
     // type 2). number rolled depends on item tier (0..2 special abilities).
-    SpecialAbility abilities[2];  // +0x450..+0x60F
+    SpecialAbility abilities[2];
 };
-static_assert(sizeof(Item) == 0x610, "Item must be exactly 0x610 bytes");

@@ -11,7 +11,7 @@ namespace {
 //   - uPx / vPx / uExtPx / vExtPx: pixel coords on the ui1.png atlas (not
 //     tiles1..4; TileContent::draw binds texture 9 = ui1).
 //   - offXPx / offYPx: per-type vertex nudge applied via addVertexOffset.
-//   - drawMagnitudeTint: byte gate at entry+0x18; when set, the embedded
+//   - drawMagnitudeTint: byte gate; when set, the embedded
 //     ColorTint (= the magnitude digits) gets drawn after baseQuad.
 //
 // types we know about: 2=ATK pickup, 3=DEF pickup, 5=CONTROL pickup,
@@ -25,8 +25,8 @@ struct ContentTypeUV {
     // colorTint offsets in pixels relative to baseQuad pos. the binary uses
     // separate offsets for 1-digit vs 2-digit magnitudes since the digit
     // grouping shifts width.
-    int  magOff1X, magOff1Y;     // entry +0x1C / +0x20
-    int  magOff2X, magOff2Y;     // entry +0x24 / +0x28
+    int  magOff1X, magOff1Y;
+    int  magOff2X, magOff2Y;
 };
 constexpr ContentTypeUV kContentTypeUVTable[26] = {
     /*  0 */ {  0,   0,    0,    0,   0,   0,  false,    0,  0,    0,  0},  // unused, blank
@@ -93,12 +93,11 @@ void lookupContentIconUVPx(int contentType, float* uvOriginPx, float* uvSizePx) 
 // reconstructed from Ghidra FUN_100014708.
 //
 // composes the MovableActor base init (FUN_100038b18) with TileContent-
-// specific setup: type/magnitude storage and the embedded ColorTint at +0x140.
+// specific setup: type/magnitude storage and the embedded colorTint.
 //
 // the binary registers the new TileContent with the global audio dispatcher
-// at game+0x42f8 (FUN_10004e36c); that's where its update calls get hooked
-// into the per-frame tick. we'll wire that up when we port the dispatcher
-// list (Phase C).
+// at audioState (FUN_10004e36c); that's where its update calls get hooked
+// into the per-frame tick.
 void TileContent::init(uint32_t typeIn, int magnitude, void* parentPtr) {
     initBase(parentPtr);                    // FUN_100038b18
 
@@ -106,7 +105,7 @@ void TileContent::init(uint32_t typeIn, int magnitude, void* parentPtr) {
     type               = 0;
     rawMagnitude       = 0;
     displayedMagnitude = -1;                // binary writes 0xFFFFFFFF as a sentinel
-    colorTint.init();                       // FUN_10003c070 at +0x140
+    colorTint.init();                       // FUN_10003c070
 
     setType(typeIn);                        // FUN_1000147d4
     rawMagnitude = magnitude;

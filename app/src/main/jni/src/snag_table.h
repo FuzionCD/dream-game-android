@@ -179,7 +179,7 @@ inline constexpr SnagInfo SNAG_TABLE[119] = {
      */ {  513,    0,   87,   94, 2, 1.300f, 1.800f, 2.000f,
         "Mania"                   , "While Held: Swaps your {A} and {D} each turn.",
         "While Placed: Swaps its own {A} and {D} each turn.", "" },
-    /* 0x06 Obsession  // writes 0x64 / 2 to the consumedFlag region (+0x490)
+    /* 0x06 Obsession  // writes 0x64 / 2 to the consumedFlag region
      */ {  178,    0,   85,   90, 0, 0.600f, 0.800f, 0.400f,
         "Obsession"               , "While Held: Can't discard snags.",
         "When Defeated: %d%% chance to be", "drawn again after %d turns." },

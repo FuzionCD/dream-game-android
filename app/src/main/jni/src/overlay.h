@@ -46,29 +46,24 @@ public:
     [[nodiscard]] bool isVisible() const { return visible; }
 
     // is a transition actively closing the screen? true from start() until the
-    // transition fires reset() to begin the reveal slide-out. == the binary's
-    // param_2[0xb8cc] (overlay+0x1B8); callers gate "freeze the board" on it.
+    // transition fires reset() to begin the reveal slide-out. this is the
+    // binary's `opening` flag; callers gate "freeze the board" on it.
     [[nodiscard]] bool isOpening() const { return opening; }
 
     // has the opening transition fully completed? (progress >= 1.0 while opening)
     [[nodiscard]] bool isOpenComplete() const { return visible && opening && progress >= 1.0f; }
 
 private:
-    // binary layout: the struct lives at Game+0x2E178 and the transition
+    // binary layout: the struct lives at Game.overlay_ and the transition
     // driver (FUN_100045410) reads visible / opening / progress at these exact
     // offsets, so the field order is binary-exact.
-    bool    visible;        // +0x00
-    uint8_t pad01[7];       // +0x01..+0x07 (topQuad aligns to +0x08)
-    Quad    topQuad;        // +0x08..+0xDF
-    Quad    bottomQuad;     // +0xE0..+0x1B7
-    bool    opening;        // +0x1B8  (true = sliding in, false = sliding out)
-    uint8_t pad1B9[3];      // +0x1B9..+0x1BB (progress aligns to +0x1BC)
-    float   progress;       // +0x1BC  (0..1)
-    float   targetY;        // +0x1C0  (target y the quads slide to)
-    float   screenHeight;   // +0x1C4  (non-binary convenience; the binary reads
+    bool    visible;
+    Quad    topQuad;
+    Quad    bottomQuad;
+    bool    opening;        // (true = sliding in, false = sliding out)
+    float   progress;       // (0..1)
+    float   targetY;        // (target y the quads slide to)
+    float   screenHeight;   // (non-binary convenience; the binary reads
                             //          DAT_10007ddb8 directly. fills the slot's
                             //          4 trailing pad bytes.)
 };
-
-static_assert(sizeof(Overlay) == 0x1C8,
-              "Overlay must be 0x1C8 bytes (fills Game+0x2E178..+0x2E340)");

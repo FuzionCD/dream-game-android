@@ -12,7 +12,7 @@
 //   dtor:                 FUN_100007df0 (a no-op in the binary)
 //
 // the decoration value stored in TileObject's std::list<DecorationValue> at
-// TileObject+0x228. each tile holds zero or more decorations stacked in front
+// TileObject.decorations. each tile holds zero or more decorations stacked in front
 // of the hex face, each rendering a small overlay icon (and, for kind=2
 // specifically, a numeric value rendered as digits via the embedded ColorTint).
 //
@@ -38,30 +38,24 @@
 //        TileContent / SnagContent sprite, leaving only the question mark
 //        visible. setting `suppressed = 1` (e.g. by re-pushing kind=1 on
 //        a tile that already has one) reveals the content again with a
-//        fade-in animation seeded by the +0xF0 progress flip.
+//        fade-in animation seeded by the alphaT progress flip.
 //   2  numeric value indicator. UV (0.0, 0.1426)..(0.125, 0.252). size
-//        (0.2, 0.109375). pos offset (0, -0.09375). stores `value` at +0xF8,
+//        (0.2, 0.109375). pos offset (0, -0.09375). stores `value`,
 //        renders it as digits via the embedded ColorTint. plays sound 0x3D.
 
-// the binary's decoration list is a libc++ std::list whose node header
-// (prev/next) is the first 0x10 bytes of each 0x140-byte node; the remaining
-// 0x130 bytes are this value. TileObject holds it as std::list<DecorationValue>
-// (head at TileObject+0x228), so the prev/next links live in the std::list node
-// rather than here. offsets below are relative to the value start (= node+0x10).
 struct DecorationValue {
-    int             kind;             // +0x000
-    uint8_t         pad004[4];        // +0x004
+    int             kind;
 
     // sub-icon Quad. its posX/posY get mirrored from the parent tile's
     // mainQuad position by TileObject::setPosition.
-    Quad            iconSubQuad;      // +0x008..+0x0DF (0xD8; owns anim rect at +0xD0)
+    Quad            iconSubQuad;      // 0xD8 bytes; holds its own anim rect
 
     // alpha-fade animation timer (0..1). advances at rate 2/sec while the
     // decoration is on-screen. when suppressed flips on, the timer (which
     // is currently at 1.0) gets re-seeded by pushDecoration to start the
     // fade-out ramp. consumed by TileObject::update's decoration walk.
-    float           alphaT;           // +0x0E0
-    bool            suppressed;       // +0x0E4  content-hide gate. when 0
+    float           alphaT;
+    bool            suppressed;       // content-hide gate. when 0
                                       //   (not suppressed), the decoration is
                                       //   actively hiding: for kind=1
                                       //   (Darkness ?) the underlying
@@ -71,23 +65,17 @@ struct DecorationValue {
                                       //   again with the alphaT fade-in. rack-
                                       //   flip-tile orientation lives on a
                                       //   separate field (flipRackTiles).
-    uint8_t         pad0E5[3];        // +0x0E5
-    int             value;            // +0x0E8  (kind=2 only; the displayed
+    int             value;            // (kind=2 only; the displayed
                                       //          numeric value)
-    uint8_t         pad0EC[4];        // +0x0EC
 
     // ColorTint. used only for kind=2 decorations (the tint renders the numeric
     // value as small digit Quads). for kind=0 / kind=1 it's never rendered.
-    ColorTint       colorTint;        // +0x0F0..+0x127  (0x38 bytes)
+    ColorTint       colorTint;        // (0x38 bytes)
 
     // sub-position offset for the icon relative to the tile center. differs
     // per kind: kind=0 -> (0, 0); kind=1 -> (0.00625, 0.0078125); kind=2 ->
     // (0, -0.09375). read by TileObject::setPosition when propagating the
     // tile's pos into the iconSubQuad.
-    float           subOffsetX;       // +0x128
-    float           subOffsetY;       // +0x12C
+    float           subOffsetX;
+    float           subOffsetY;
 };
-
-static_assert(sizeof(DecorationValue) == 0x130,
-              "DecorationValue must be 0x130 bytes (the std::list node value; "
-              "node = 0x10 prev/next header + 0x130 value = 0x140)");

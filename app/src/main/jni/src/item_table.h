@@ -12,9 +12,9 @@
 // Item's SpecialAbility slots.
 //
 // pool layout: 18 entries, each 16 bytes:
-//   +0x00: int lo
-//   +0x04: int hi_step
-//   +0x08: const char* name (with {A}/{D}/{H}/{C}/{X} icon placeholders)
+// int lo
+// int hi_step
+// const char* name (with {A}/{D}/{H}/{C}/{X} icon placeholders)
 //
 // magnitude rolled per slot:
 //   magnitude = rngInt(lo, lo + (PlayerSystem.currentLevel / 10) * hi_step)

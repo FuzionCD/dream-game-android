@@ -65,16 +65,16 @@ void Item::postInitVisuals() {
     constexpr float HP_Y_NUDGE_1DIGIT = 0.0015625f; // DAT_10005a178 = 1/640
     constexpr float HP_Y_NUDGE_2DIGIT = 0.003125f;  // DAT_10005a17c = 2/640
 
-    tint1.setColor(0xFF, 0xFF, 0xC8);   // 0xFFC8FFFF
+    tint1.setColor(0xFF, 0xFF, 0xC8);
     tint1.setNumber(atk, 0, 1);
     tint1.setPosition(icon2.quad.posX + TINT_INSET_2PX, icon2.quad.posY, 1);
 
-    tint2.setColor(0xC8, 0xE6, 0xFF);   // 0xFFFFE6C8
+    tint2.setColor(0xC8, 0xE6, 0xFF);
     tint2.setNumber(def, 0, 1);
     tint2.setPosition(icon3.quad.posX + TINT_INSET_1PX,
                       icon3.quad.posY + TINT_INSET_1PX, 1);
 
-    tint3.setColor(0xFF, 0xFF, 0x64);   // 0xFF64FFFF
+    tint3.setColor(0xFF, 0xFF, 0x64);
     tint3.setNumber(hp, 0, 1);
     const float hpYNudge = (hp >= 10) ? HP_Y_NUDGE_2DIGIT : HP_Y_NUDGE_1DIGIT;
     tint3.setPosition(icon4.quad.posX + TINT_INSET_1PX,
@@ -83,7 +83,7 @@ void Item::postInitVisuals() {
     // the 2 SpecialAbility icon quads, sharing one atlas rect (531, 205, 40x40).
     // each slot drops 30 px below the previous, starting 50 px above the slot
     // origin (just under the stat-number row).
-    constexpr float SPECIAL_ABILITY_POS_X       = -49.0f / 640.0f;  // -0.0765625, 0xbd9ccccd at +0xa8
+    constexpr float SPECIAL_ABILITY_POS_X       = -49.0f / 640.0f;  // -0.0765625, 0xbd9ccccd
     constexpr float SPECIAL_ABILITY_Y_STRIDE_PX = 30.0f;
     constexpr float SPECIAL_ABILITY_Y_BASE_PX   = -50.0f;
     constexpr float PIXEL_TO_SCREEN_REF         = 640.0f;     // DAT_10005a170

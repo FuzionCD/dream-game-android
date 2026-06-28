@@ -19,19 +19,17 @@
 // total struct size: 0x98 bytes.
 //
 // struct layout:
-//   +0x00: vector<TileIcon>  items        (the drawn quads)
-//   +0x18: vector<int>       modes        (per-item mode: 1=stretch, 2=fixed)
-//   +0x30: vector<int64_t>   itemExtra    (per-item 8-byte data)
-//   +0x48: vector<int>       displayParam (per-item display param)
-//   +0x60: vector<int>       additional   (per-item additional data)
-//   +0x78: int               cachedValue
-//   +0x7C: float             scale        (texture size, typically 1024.0)
-//   +0x80: float             (padding/unused)
-//   +0x84: float             totalWidth   (cached total width)
-//   +0x88: bool              flag88
-//   +0x8C: float             posX
-//   +0x90: float             posY
-//   +0x94: bool              rotated      (draw with 90 degree rotation)
+// vector<TileIcon>  items        (the drawn quads)
+// vector<int>       modes        (per-item mode: 1=stretch, 2=fixed)
+// vector<int64_t>   itemExtra    (per-item 8-byte data)
+// vector<int>       displayParam (per-item display param)
+// vector<int>       additional   (per-item additional data)
+// int               cachedValue
+// float             scale        (texture size, typically 1024.0)
+// float             totalWidth   (cached total width)
+// float             posX
+// float             posY
+// bool              rotated      (draw with 90 degree rotation)
 
 class TileCollection {
 public:
@@ -49,21 +47,16 @@ public:
     void recalculate();
 
     // 5 parallel vectors (matching the original's internal layout)
-    std::vector<TileIcon> items;         // +0x00
-    std::vector<int> modes;              // +0x18
-    std::vector<int64_t> itemExtra;      // +0x30
-    std::vector<int> displayParams;      // +0x48
-    std::vector<int> additionalData;     // +0x60
+    std::vector<TileIcon> items;
+    std::vector<int> modes;
+    std::vector<int64_t> itemExtra;
+    std::vector<int> displayParams;
+    std::vector<int> additionalData;
 
-    int stagingValue;    // +0x78 (temp slot: caller writes here, pushItem copies to additionalData)
-    float scale;         // +0x7C (texture size, typically 1024.0)
-    float pad80;         // +0x80
-    float totalWidth;    // +0x84
-    bool flag88;         // +0x88
-    uint8_t pad89[3];    // +0x89
-    float posX;          // +0x8C
-    float posY;          // +0x90
-    bool rotated;        // +0x94
-    uint8_t pad95[3];    // +0x95
+    int stagingValue;    // (temp slot: caller writes here, pushItem copies to additionalData)
+    float scale;         // (texture size, typically 1024.0)
+    float totalWidth;
+    float posX;
+    float posY;
+    bool rotated;
 };
-static_assert(sizeof(TileCollection) == 0x98, "TileCollection must be 0x98 bytes");

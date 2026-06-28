@@ -3,7 +3,7 @@
 // AUTO-EXTRACTED from the Dream binary's content text table at DAT_100078818.
 // 26 entries x 4 string pointers each, embedded in the same per-content-type
 // row as the UV / offset data exposed by tile_content.cpp::kContentTypeUVTable.
-// strings live at row+0x30..+0x48; this header carries name + 3 description
+// this header carries name + 3 description
 // lines only. consumed by FUN_100014ce0 (name) and FUN_100014cfc (desc N),
 // the DetailPanel content / generic-text populators.
 //

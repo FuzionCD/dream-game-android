@@ -34,7 +34,6 @@ struct GlyphOffset {
     float dx;
     float dy;
 };
-static_assert(sizeof(GlyphOffset) == 8, "GlyphOffset must be 8 bytes");
 
 // FUN_10004c658 returns two floats (s0 and s1), even though Ghidra's decompile
 // flattens it to `return fVar6`. the function-exit disassembly zeroes both v0
@@ -139,30 +138,20 @@ public:
 
     // ---- byte-exact field layout ----
 
-    std::vector<TileIcon>          glyphs;          // +0x00..+0x17  one TileIcon per visible character
-    std::vector<uint32_t>          sizeModes;       // +0x18..+0x2F  one mode (0..3) per glyph
-    std::vector<GlyphOffset>  offsets;         // +0x30..+0x47  per-glyph (dx, dy) vertex offset
-    std::vector<float>             overrideHeights; // +0x48..+0x5F  per-glyph height override (>=0 wins over natural)
-    std::vector<int32_t>           lineIndices;     // +0x60..+0x77  per-glyph line / paragraph index
+    std::vector<TileIcon>          glyphs;          // one TileIcon per visible character
+    std::vector<uint32_t>          sizeModes;       // one mode (0..3) per glyph
+    std::vector<GlyphOffset>       offsets;         // per-glyph (dx, dy) vertex offset
+    std::vector<float>             overrideHeights; // per-glyph height override (>=0 wins over natural)
+    std::vector<int32_t>           lineIndices;     // per-glyph line / paragraph index
 
-    int32_t   pendingLineIndex; // +0x78..+0x7B  caller sets before addGlyph; pushed into
+    int32_t   pendingLineIndex; // caller sets before addGlyph; pushed into
                                 //               lineIndices[] for the new glyph. line breaks
                                 //               between calls = bump this between addGlyph calls.
-    float     scale;            // +0x7C         ctor inits 1024.0  (pixels-per-unit divisor)
-    float     cachedSize0;      // +0x80         (width when !mirrored, height when mirrored)
-    float     cachedSize1;      // +0x84         (height when !mirrored, width when mirrored)
-    bool      widthValid;       // +0x88         "cache is current" gate; getWidth recomputes if false
-    uint8_t   pad89[3];         // +0x89..+0x8B
-    float     leftX;            // +0x8C         cached top-left X (setPosition writes)
-    float     topY;             // +0x90         cached top-left Y (setPosition writes)
-    bool      mirrored;         // +0x94         flag; rotates layout + flips X coords
-    uint8_t   pad95[3];         // +0x95..+0x97
+    float     scale;            // ctor inits 1024.0  (pixels-per-unit divisor)
+    float     cachedSize0;      // (width when !mirrored, height when mirrored)
+    float     cachedSize1;      // (height when !mirrored, width when mirrored)
+    bool      widthValid;       // "cache is current" gate; getWidth recomputes if false
+    float     leftX;            // cached top-left X (setPosition writes)
+    float     topY;             // cached top-left Y (setPosition writes)
+    bool      mirrored;         // flag; rotates layout + flips X coords
 };
-
-static_assert(sizeof(Label) == 0x98,
-              "Label must be 0x98 bytes, matching the slot stride between slot+0x180 "
-              "and slot+0x218 in level_up_panel.h, and the equivalent +0x010..+0x0A8 perk-slot "
-              "stride. libc++ aarch64 std::vector layout (3 pointers = 24 bytes) lines up 1:1.");
-
-static_assert(sizeof(std::vector<TileIcon>) == 0x18, "std::vector head must be 24 bytes (libc++)");
-static_assert(sizeof(std::vector<uint32_t>) == 0x18, "std::vector<int> head size mismatch");

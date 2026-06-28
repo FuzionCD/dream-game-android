@@ -6,7 +6,7 @@
 //                  per-perk (name, category, warnLine2 UV, flags) at startup.
 //   FUN_100041aa4, lazy initializer that calls FUN_10004223c for each
 //                  (perkType, level) entry, populating per-perk std::vector
-//                  of level descriptors at DAT_10007e290 + perkType * 0x40 + 0x28.
+//                  of level descriptors in the table at DAT_10007e290 (0x40-byte stride).
 //
 // our port replaces both with the static tables below; the data is constant
 // at startup so no runtime "init" pass is needed.

@@ -14,10 +14,10 @@
 // matches the binary exactly when the new score lands at the very end.
 //
 // binary signature is `(LeaderboardMenu*, worldIndex, ...)` because the
-// lists live inside the LeaderboardMenu struct at +0x69A8. our port splits
-// them into a separate ScoreHistory class at the same Game offset, so the
+// lists live inside the LeaderboardMenu struct. our port splits them into
+// a separate ScoreHistory class at the same Game offset, so the
 // `leaderboard.dirty = 1` side effect at the binary's first line lands
-// here via getGame()->leaderboardMenu() instead of `param_1 + 2`.
+// here via getGame()->leaderboardMenu() instead of direct pointer math.
 int ScoreHistory::insertEntry(uint32_t worldIndex,
                               uint32_t characterIndex,
                               uint32_t levels, uint32_t items,

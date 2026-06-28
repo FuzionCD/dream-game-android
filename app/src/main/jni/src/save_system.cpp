@@ -161,7 +161,7 @@ static void loadSavedGame(Game& game, const uint8_t* blob, size_t length) {
     snap.levelTurnCount       = readU16(blob, cur);
     snap.pickupSnagThreshold  = readU16(blob, cur);
 
-    // vector<int> at +0x58, bytes -> ints. clone of gb.variantsUsed.
+    // vector<int>, bytes -> ints. clone of gb.variantsUsed.
     {
         const uint8_t n = readU8(blob, cur);
         snap.variantsUsed.resize(n);
@@ -171,7 +171,7 @@ static void loadSavedGame(Game& game, const uint8_t* blob, size_t length) {
         }
     }
 
-    // vector<int64> at +0x70, bytes -> int64. clone of gb.animBannerSeedHistory.
+    // vector<int64>, bytes -> int64. clone of gb.animBannerSeedHistory.
     {
         const uint8_t n = readU8(blob, cur);
         snap.animBannerSeedHistory.resize(n);
@@ -425,7 +425,7 @@ static void loadSavedGame(Game& game, const uint8_t* blob, size_t length) {
 //               delete the file directly (framework doesn't infer deletion
 //               from a zero-length return), return null.
 //   else      : clear dirty, pack the GameSnapshot into the slot's
-//               scratch vector at game+0x2E6B8, set hasSavedRun to the
+//               scratch vector, set hasSavedRun to the
 //               encoded length, return data ptr + length.
 //
 // note: only the encode path runs the full pack; the delete path is a
@@ -454,7 +454,7 @@ static const uint8_t* encodeSavedGame(Game& game, size_t* outLength) {
     // exactly without a pre-pass. reserve generously (1 MB covers any
     // plausible save: hexMapVec is u16-counted with 6 bytes/entry =
     // 384 KB absolute max, plus headers), then resize down after
-    // encode. the slot's scratch buffer at game+0x2E6B8 is libc++
+    // encode. the slot's scratch buffer is libc++
     // std::vector<uint8_t>.
     auto& scratch = game.saveScratch(0);
     scratch.resize(1024 * 1024);
@@ -738,7 +738,7 @@ static void loadSettings(Game& game, const uint8_t* blob, size_t length) {
 }
 
 // inline FUN_1000462ac case 1. clear slot-1 dirty, pack 11 bytes into
-// the slot's scratch vector at game+0x2E6F0, return data ptr + length.
+// the slot's scratch vector, return data ptr + length.
 static const uint8_t* encodeSettings(Game& game, size_t* outLength) {
     // clear dirty before encoding so a re-entry mid-loop is a no-op.
     game.saveSlot1Dirty() = false;
@@ -827,7 +827,7 @@ static void loadUnlocks(Game& game, const uint8_t* blob, size_t length) {
 }
 
 // FUN_100046ffc. clear shopSaveDirty, pack variable-length blob into the
-// slot's scratch vector at game+0x2E760, return data ptr + length.
+// slot's scratch vector, return data ptr + length.
 static const uint8_t* encodeUnlocks(Game& game, size_t* outLength) {
     game.shopSaveDirty() = false;
 
@@ -928,7 +928,7 @@ static void loadScoreRecords(Game& game, const uint8_t* blob, size_t length) {
 }
 
 // FUN_10004719c. clear leaderboardSaveDirty, pack variable-length blob
-// into the slot's scratch vector at game+0x2E7A0.
+// into the slot's scratch vector.
 static const uint8_t* encodeScoreRecords(Game& game, size_t* outLength) {
     game.leaderboardSaveDirty() = false;
 
@@ -1048,7 +1048,7 @@ static void loadAchievements(Game& game, const uint8_t* blob, size_t length) {
 }
 
 // FUN_1000472cc. clear saveSlot4Dirty, pack variable-length blob into
-// the slot's scratch vector at game+0x2E848.
+// the slot's scratch vector.
 static const uint8_t* encodeAchievements(Game& game, size_t* outLength) {
     game.saveSlot4Dirty() = false;
 

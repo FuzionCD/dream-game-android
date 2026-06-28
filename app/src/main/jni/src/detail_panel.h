@@ -14,17 +14,17 @@ class Perk;
 //   draw:        FUN_10003ef28
 //   update:      FUN_10003f0e4
 //
-// DetailPanel lives at GameBoard+0x4408 (0x10B0 bytes). it's the "tile inspect"
+// DetailPanel lives at GameBoard.detailPanel (0x10B0 bytes). it's the "tile inspect"
 // popup that appears when the player taps a tile or item to read its name,
-// description, and effect. has 6 display modes (switch on +0x000):
+// description, and effect. has 6 display modes (switch on mode):
 //   mode 0: standard tile/item card (frames, optional bonus quad, 2 tints)
 //   mode 1: simple icon overlay (tex 9, sheet9)
 //   mode 2: simple icon overlay (tex 11, items1)
-//   mode 3: Perk preview (forwards to Perk::drawAt via perkSource at +0x1078)
+//   mode 3: Perk preview (forwards to Perk::drawAt via perkSource)
 //   mode 4: outer frame only (tex 9)
 //   mode 5: same as mode 1
 //
-// `subMode` (+0x010, the binary's `param_1[4]`) gates two pairs of frame quads:
+// `subMode` (the binary's `param_1[4]`) gates two pairs of frame quads:
 //   subMode == 1 -> draw frames[2] and frames[3]  (first decoration variant)
 //   subMode == 2 -> draw frames[10] and frames[11] (second decoration variant)
 //
@@ -127,73 +127,64 @@ public:
 
     // --- byte-exact struct fields ---
 
-    int32_t mode;                  // +0x000  display mode (0..5)
-    bool    visible;               // +0x004  drawn when set or fadeT < 1
-    uint8_t pad005[3];             // +0x005
+    int32_t mode;                  // display mode (0..5)
+    bool    visible;               // drawn when set or fadeT < 1
 
-    float   posX;                  // +0x008  current panel position
-    float   posY;                  // +0x00C
-    int32_t subMode;               // +0x010  0/1/2; gates frame pairs
-    uint8_t pad014[4];             // +0x014
+    float   posX;                  // current panel position
+    float   posY;
+    int32_t subMode;               // 0/1/2; gates frame pairs
 
     // 13 frame TileIcons (the panel's static decorative pieces).
     // pairs at indices 2/3 and 10/11 are gated by `subMode`.
-    TileIcon frames[13];           // +0x018..+0xB0F  (13 * 0xD8 = 0xAF8)
+    TileIcon frames[13];
 
     // mode 0 icon texture index (sheet9 / items1 / etc.)
-    int32_t iconTexIndex;          // +0xB10
-    uint8_t padB14[4];             // +0xB14
+    int32_t iconTexIndex;
 
-    TileIcon iconQuad;             // +0xB18  drawn in modes 1, 2, 5
-    TileIcon outerFrame;           // +0xBF0  drawn in modes 0, 4
+    TileIcon iconQuad;             // drawn in modes 1, 2, 5
+    TileIcon outerFrame;           // drawn in modes 0, 4
 
-    ColorTint tintFrame;           // +0xCC8
+    ColorTint tintFrame;
 
     // 4 text items: textCenter is the "title" rendered in the middle of the
     // panel, textLines[0..2] are 3 description lines below.
-    TextItem textCenter;           // +0xD00
-    TextItem textLines[3];         // +0xD88..+0xF1F
+    TextItem textCenter;
+    TextItem textLines[3];
 
     // hasTitle tweaks the layoutAndFade metrics based on whether the populator
     // passed a non-null title, and gates the textCenter (title) draw in draw().
-    bool hasTitle;                 // +0xF20  init = 1
-    uint8_t padF21[7];             // +0xF21
+    bool hasTitle;                 // init = 1
 
     // mode 0 (snag) extras. iOS draws the combatSimPreview + snagDeathTurns[Alt]
     // (the "combat preview" hex tile next to the snag icon) only when
     // snagPreviewEnabled is set; the snag populator passes its param_7
     // through to this byte. all other modes leave it clear.
-    TileIcon combatSimPreview;     // +0xF28
+    TileIcon combatSimPreview;
 
-    ColorTint snagDeathTurns;        // +0x1000
-    ColorTint playerDeathTurns;      // +0x1038
+    ColorTint snagDeathTurns;
+    ColorTint playerDeathTurns;
 
-    bool    snagPreviewEnabled;    // +0x1070  init = 0
-    uint8_t pad1071[7];            // +0x1071
+    bool    snagPreviewEnabled;    // init = 0
     // mode 3 (Perk preview) source pointer. populateForPerk
     // (FUN_10003f6f8, called from UserStatsPanel::update's perks-strip tap)
     // writes the active Perk* here; draw() forwards to Perk::drawAt to render
     // the perk icon + tint inside the preview window.
-    Perk*   perkSource;            // +0x1078  init = nullptr
+    Perk*   perkSource;            // init = nullptr
 
-    uint8_t currentAlpha;          // +0x1080  per-frame alpha (set by update)
-    uint8_t pad1081[3];            // +0x1081
-    float   fadeT;                 // +0x1084  init = 1.0; 0..1 fade timer
+    uint8_t currentAlpha;          // per-frame alpha (set by update)
+    float   fadeT;                 // init = 1.0; 0..1 fade timer
 
     // when interpolatePosition is set, posX/posY lerp from start to target
     // by fadeT. otherwise posX/posY are author-controlled.
-    float   startPosX;             // +0x1088
-    float   startPosY;             // +0x108C
-    float   targetPosX;            // +0x1090
-    float   targetPosY;            // +0x1094
+    float   startPosX;
+    float   startPosY;
+    float   targetPosX;
+    float   targetPosY;
 
-    bool    interpolatePosition;   // +0x1098  init = 0
-    uint8_t pad1099[7];            // +0x1099..+0x109F
-    int     touchHoldArea;         // +0x10A0  (0 none, 1 rack, 2 board); set when
+    bool    interpolatePosition;   // init = 0
+    int     touchHoldArea;         // (0 none, 1 rack, 2 board); set when
                                    //          the inspect panel opens, read by the
                                    //          idle-tick to pick the auto-close rule.
-    float   touchOrigX;            // +0x10A4  (hold origin; area 2 / board only)
-    float   touchOrigY;            // +0x10A8
-    uint8_t pad10AC[4];            // +0x10AC..+0x10AF
+    float   touchOrigX;            // (hold origin; area 2 / board only)
+    float   touchOrigY;
 };
-static_assert(sizeof(DetailPanel) == 0x10B0, "DetailPanel must be exactly 0x10B0 bytes");

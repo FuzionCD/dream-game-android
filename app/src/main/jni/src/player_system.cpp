@@ -37,7 +37,6 @@ void PlayerSystem::init() {
     baseItems[2] = nullptr;
     perks.clear();
     exitVanishing       = false;
-    std::memset(pad1A1, 0, sizeof(pad1A1));
     characterPulseT = 0.0f;                          // 0 = pulse idle
 }
 

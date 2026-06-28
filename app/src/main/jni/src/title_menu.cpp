@@ -227,10 +227,10 @@ void TitleMenu::construct() {
     fadeProgress = 0.0f;
     boardRotation = 0.0f;
 
-    // fade overlay quad at +0x0008
+    // fade overlay quad
     fadeOverlay.quad = Quad();
 
-    // 300 particle quads at +0x00E8
+    // 300 particle quads
     // each gets: size 0.078 x 0.078, UV (0.5, 0.0957) to (0.5234, 0.126)
     for (int i = 0; i < SMOKE_PARTICLE_COUNT; i++) {
         particles[i].quad = Quad();
@@ -238,7 +238,7 @@ void TitleMenu::construct() {
         particles[i].quad.setTexCoords(0.5f, 0.0957f, 0.5234f, 0.126f);
     }
 
-    // 40 grid tile quads at +0xFE08
+    // 40 grid tile quads
     for (int i = 0; i < BOARD_GRID_ROWS * BOARD_GRID_COLS; i++) {
         tileGrid[i].quad = Quad();
     }
@@ -247,35 +247,35 @@ void TitleMenu::construct() {
     // original positions were tuned for shorter iOS aspect ratios circa 2016.
     const float yShift = 0.15f;
 
-    // cursor quad at +0x11FD0: "I KEEP HAVING THIS DREAM" curved text
+    // cursor quad: "I KEEP HAVING THIS DREAM" curved text
     cursorObj.quad = Quad();
     cursorObj.quad.setTexCoords(0.574f, 0.275f, 1.0f, 0.477f);
     cursorObj.quad.setSize(0.681f, 0.322f);
     cursorObj.quad.posX = 0.494f;
     cursorObj.quad.posY = 0.219f + yShift;
 
-    // extra quad 0 at +0x120A8: the gear/cog logo
+    // extra quad 0: the gear/cog logo
     logoPieces[0].quad = Quad();
     logoPieces[0].quad.setTexCoords(0.418f, 0.478f, 1.0f, 0.823f);
     logoPieces[0].quad.setSize(0.931f, 0.553f);
     logoPieces[0].quad.posX = 0.5f;
     logoPieces[0].quad.posY = 0.622f + yShift;
 
-    // extra quad 1 at +0x12180: the bullseye target
+    // extra quad 1: the bullseye target
     logoPieces[1].quad = Quad();
     logoPieces[1].quad.setTexCoords(0.0f, 0.42f, 0.348f, 0.736f);
     logoPieces[1].quad.setSize(0.556f, 0.506f);
     logoPieces[1].quad.posX = 0.5f;
     logoPieces[1].quad.posY = 0.378f + yShift;
 
-    // extra quad 2 at +0x12258: internal bullseye ring
+    // extra quad 2: internal bullseye ring
     logoPieces[2].quad = Quad();
     logoPieces[2].quad.setTexCoords(0.432f, 0.335f, 0.572f, 0.476f);
     logoPieces[2].quad.setSize(0.225f, 0.225f);
     logoPieces[2].quad.posX = 0.5f;
     logoPieces[2].quad.posY = 0.406f + yShift;
 
-    // main overlay quad at +0x12338: game start button
+    // main overlay quad: game start button
     mainOverlayObj.quad = Quad();
 
     // indicator quads
@@ -292,11 +292,12 @@ void TitleMenu::construct() {
     colorCycleTimer = 0.0f;
 
     // FUN_10004a774 zeros the four click-result flags here, not the anim
-    // fields (0x12944/0x12948 are initialized in initVisuals / FUN_10004ad80).
-    startButtonClicked = false;     // +0x12411
-    shopClicked = false;      // +0x125CA
-    leaderboardClicked = false;     // +0x12782
-    achievementsClicked = false;    // +0x1293A
+    // fields (titleAnimState / titleButtonPressed are initialized in
+    // initVisuals / FUN_10004ad80).
+    startButtonClicked = false;
+    shopClicked = false;
+    leaderboardClicked = false;
+    achievementsClicked = false;
 
     SDL_Log("TitleMenu::construct() complete");
 }
@@ -614,7 +615,7 @@ void TitleMenu::update(float dt, bool interactable,
         // the four buttons are a mutually exclusive else-if cascade: each
         // enabled-but-missed button falls through to the next, and only the
         // first hit highlights. any hit converges on a single soundQueue
-        // trigger(0) at the shared tail (FUN_100035ccc(game+0x3880, 0)).
+        // trigger(0) at the shared tail (FUN_100035ccc(soundQueue, 0)).
         bool pressed = false;
 
         if (hitTestQuad(mainOverlayObj.quad, touchX, touchY)) {

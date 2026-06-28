@@ -16,14 +16,14 @@
 //   clearKeysRow:              FUN_100011d54
 //
 // the post-run score / results panel. heap-allocated via operator_new(0x1018)
-// at Game::create time and stored at Game+0x19128. opens when the player dies
+// at Game::create time and stored at Game.scorePanel_. opens when the player dies
 // or completes a run: FUN_100045410's exitRequested branch passes the score
 // data (turns / worlds / snags / items / etc.) plus the key-count earned this
 // run, and the panel cascades 8 stat rows in then animates a row of key
 // icons popping in at the bottom.
 //
 // not the in-game pause menu; that's the embedded PauseMenu panel at
-// GameBoard+0xF488 (separate subsystem).
+// GameBoard.pauseMenu (separate subsystem).
 //
 // the 8 stat rows are:
 //   row 0: "Turns Taken"
@@ -36,14 +36,14 @@
 //   row 7: "Score" (final aggregate; no per-value column shown)
 //
 // each row has 3 TextItem columns:
-//   col 0 (+0x000): row title ("Turns Taken")
-//   col 1 (+0x088): raw count (e.g. "84")
-//   col 2 (+0x110): scored value (count * multiplier)
+//   col 0: row title ("Turns Taken")
+//   col 1: raw count (e.g. "84")
+//   col 2: scored value (count * multiplier)
 //
-// totals roll up into totalScore at +0xE48 and are also the final row's
+// totals roll up into totalScore and are also the final row's
 // scored-value column.
 //
-// the "keys row" linked list at +0xE50/+0xE58/+0xE60 holds heap-allocated
+// the "keys row" linked list holds heap-allocated
 // 0xF0-byte icon nodes, one per key earned this run, all rendering the
 // same key sprite from the panel atlas. these are the currency the player
 // can spend in the between-run shop.
@@ -55,26 +55,20 @@
 // generic.
 
 struct ScorePanelRow {
-    TextItem titleLabel;   // +0x000  the per-row title (e.g. "Turns Taken")
-    TextItem valueLabel;   // +0x088  the raw-count column (e.g. "84")
-    TextItem scoreLabel;   // +0x110  the scored-value column (count * mult)
+    TextItem titleLabel;   // the per-row title (e.g. "Turns Taken")
+    TextItem valueLabel;   // the raw-count column (e.g. "84")
+    TextItem scoreLabel;   // the scored-value column (count * mult)
 };
-
-static_assert(sizeof(ScorePanelRow) == 0x198,
-              "ScorePanelRow must be 0x198 bytes, 3 TextItems of 0x88 each.");
 
 // the per-key icon value, stored in the keysRow std::list. all icons share the
 // same atlas UV and tile horizontally at the bottom of the panel. this is the
 // std::list node body: the binary's 0xF0 node is its 0x10 prev/next header plus
 // this 0xE0 value.
 struct KeyIconValue {
-    Quad  tileQuad;    // +0x00..+0xD7
-    float progress;    // +0xD8  scale-in animation 0..1
-    float popInTimer;  // +0xDC  per-icon stagger delay
+    Quad  tileQuad;
+    float progress;    // scale-in animation 0..1
+    float popInTimer;  // per-icon stagger delay
 };
-
-static_assert(sizeof(KeyIconValue) == 0xE0,
-              "KeyIconValue must be 0xE0 (the std::list node value).");
 
 class ScorePanel {
 public:
@@ -106,8 +100,8 @@ public:
     //   1. chrome alpha fade 0->1
     //   2. AnimationController::update on title
     //   3. scoreDelay countdown (initial 2.5s) blocks row cascade
-    //   4. row-by-row cascade: rowProgress (+0x180) tracks current row,
-    //      subProgress (+0x178) animates within (cosine ease)
+    //   4. row-by-row cascade: rowProgress tracks current row,
+    //      subProgress animates within (cosine ease)
     //   5. when rowProgress == 8 (final row reached), animate the key icons'
     //      alpha + scale via sin curves (per-icon popInTimer staggers them)
     //   6. when fully open and game touch state == 2 (drag), set
@@ -136,58 +130,39 @@ public:
     // tracks the operator_new(0x1018) size + FUN_100010764 ctor + all field
     // touch sites in FUN_100010990 / FUN_100011344 / FUN_100011b78.
 
-    bool                  visible;            // +0x000
-    bool                  secondaryVisible;   // +0x001  binary sets in open;
+    bool                  visible;
+    bool                  secondaryVisible;   // binary sets in open;
                                               //         purpose not yet pinned.
-    bool                  closeRequested;     // +0x002  tap-to-dismiss signal
+    bool                  closeRequested;     // tap-to-dismiss signal
                                               //         set by update when game
                                               //         input state == drag
-    uint8_t               pad003[5];          // +0x003..+0x007
 
-    Quad                  bgQuad;             // +0x008..+0x0DF
+    Quad                  bgQuad;
                                               // setSize(1.0, virtualHeight)
 
-    AnimationController   titleAnim;          // +0x0E0..+0x167
+    AnimationController   titleAnim;
                                               // "And then I wake up" title via
                                               // FUN_100039ea4
 
-    float                 titleAnchorX;       // +0x168
-    float                 titleAnchorY;       // +0x16C
+    float                 titleAnchorX;
+    float                 titleAnchorY;
 
-    float                 chromeAlpha;        // +0x170  0..1, fade-in
-    float                 scoreDelay;         // +0x174  initial 2.5s, blocks rows
-    float                 subProgress;        // +0x178  current row anim 0..1
-    uint8_t               pad17C[4];          // +0x17C..+0x17F
+    float                 chromeAlpha;        // 0..1, fade-in
+    float                 scoreDelay;         // initial 2.5s, blocks rows
+    float                 subProgress;        // current row anim 0..1
 
-    int64_t               rowProgress;        // +0x180  current row index 0..8
+    int64_t               rowProgress;        // current row index 0..8
 
-    ScorePanelRow         rows[8];            // +0x188..+0xE47  8 * 0x198
+    ScorePanelRow         rows[8];            // 8 * 0x198
                                               //                 = 0xCC0
 
-    int32_t               totalScore;         // +0xE48  sum of all row scoreLabel
+    int32_t               totalScore;         // sum of all row scoreLabel
                                               //         values
-    uint8_t               padE4C[4];          // +0xE4C..+0xE4F
 
-    std::list<KeyIconValue> keysRow;          // +0xE50..+0xE67 (libc++ head:
+    std::list<KeyIconValue> keysRow;          // (libc++ head:
                                               // prev/next/size = 0x18 bytes)
 
-    Quad                  resultRankQuad;     // +0xE68..+0xF3F  set by
+    Quad                  resultRankQuad;     // set by
                                               //                 setResultRankVisual
-    Quad                  resultPanelQuad;    // +0xF40..+0x1017
+    Quad                  resultPanelQuad;
 };
-
-static_assert(sizeof(ScorePanel) == 0x1018,
-              "ScorePanel must be exactly 0x1018 bytes, matches the binary's "
-              "`operator_new(0x1018)` in FUN_1000437a4.");
-
-static_assert(offsetof(ScorePanel, bgQuad)          == 0x008);
-static_assert(offsetof(ScorePanel, titleAnim)       == 0x0E0);
-static_assert(offsetof(ScorePanel, chromeAlpha)     == 0x170);
-static_assert(offsetof(ScorePanel, scoreDelay)      == 0x174);
-static_assert(offsetof(ScorePanel, subProgress)     == 0x178);
-static_assert(offsetof(ScorePanel, rowProgress)     == 0x180);
-static_assert(offsetof(ScorePanel, rows)            == 0x188);
-static_assert(offsetof(ScorePanel, totalScore)      == 0xE48);
-static_assert(offsetof(ScorePanel, keysRow)         == 0xE50);
-static_assert(offsetof(ScorePanel, resultRankQuad)  == 0xE68);
-static_assert(offsetof(ScorePanel, resultPanelQuad) == 0xF40);

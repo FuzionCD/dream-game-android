@@ -59,10 +59,10 @@ static constexpr float kForfeitButtonAnchorY  = 0.2421875f;   // immediate in bo
 
 // posX/posY for the 3 decorative icons of the popup.
 static constexpr float kForfeitIcon0PosX = 0.32499998f;
-static constexpr float kForfeitIcon0PosY = 0.0671875f;   // IEEE 0x3d89999a (forfeitTitle+0xA8 high32)
-static constexpr float kForfeitIcon1PosX = 0.315625f;    // IEEE 0x3ea1999a (warnLine1+0xA8 low32)
+static constexpr float kForfeitIcon0PosY = 0.0671875f;   // IEEE 0x3d89999a (forfeitTitle posY)
+static constexpr float kForfeitIcon1PosX = 0.315625f;    // IEEE 0x3ea1999a (warnLine1 posX)
 static constexpr float kForfeitIcon1PosY = 0.15625000f;
-static constexpr float kForfeitIcon2PosX = 0.315625f;    // IEEE 0x3ea1999a (warnLine2+0xA8 low32)
+static constexpr float kForfeitIcon2PosX = 0.315625f;    // IEEE 0x3ea1999a (warnLine2 posX)
 static constexpr float kForfeitIcon2PosY = 0.20312500f;
 
 // ----------------------------------------------------------------------

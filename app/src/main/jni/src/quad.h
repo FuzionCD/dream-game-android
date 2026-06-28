@@ -11,25 +11,6 @@
 //   setTexCoords:   FUN_1000081bc
 //   setSize:        FUN_1000081f0
 //
-// struct layout (arm64 offsets from binary, total 0xD8 = 216 bytes):
-//   0x00: vtable pointer (8 bytes)
-//   0x08: vertices[4] (80 bytes, 4 * 20-byte interleaved vertices)
-//   0x58: targetVertices[4] (80 bytes, animation target)
-//   0xA8: posX (float)
-//   0xAC: posY (float)
-//   0xB0: width (float)
-//   0xB4: height (float)
-//   0xB8: scaleX (float)
-//   0xBC: scaleY (float)
-//   0xC0: rotation (float)
-//   0xC4: animating (byte)
-//   0xC5: hidden (byte, 0 = visible, 1 = skip draw)
-//   0xC6: padding (2 bytes for 4-byte alignment of next floats)
-//   0xC8: animMinX (float) - animation target rect, min corner X (local space)
-//   0xCC: animMinY (float) - animation target rect, min corner Y
-//   0xD0: animMaxX (float) - animation target rect, max corner X
-//   0xD4: animMaxY (float) - animation target rect, max corner Y
-//
 // animation semantics (verified in FUN_100007ef0 disassembly):
 //   each frame, the draw path calls animationStep, which checks whether the
 //   current vertex bbox already encloses [animMin, animMax] (in local space,
@@ -120,30 +101,25 @@ public:
     // --- fields ordered to match binary layout after the vtable pointer ---
     // (vtable pointer is implicit at offset 0x00, added by the compiler)
 
-    // 0x08: vertex data (private but must come first to match layout)
+    // vertex data (private but must come first to match layout)
     Vertex vertices[4];        // 0x08, 80 bytes
     Vertex targetVertices[4];  // 0x58, 80 bytes
 
-    // 0xA8: public fields
+    // public fields
     float posX, posY;          // 0xA8, 0xAC
     float width, height;       // 0xB0, 0xB4
     float scaleX, scaleY;      // 0xB8, 0xBC
-    float rotation;            // 0xC0
-    bool animating;            // 0xC4
-    bool hidden;               // 0xC5
-    uint8_t pad_[2];           // 0xC6-0xC7 (alignment padding)
+    float rotation;
+    bool animating;
+    bool hidden;
 
-    // 0xC8: animation target rect (local space, relative to posX/posY).
+    // animation target rect (local space, relative to posX/posY).
     // written by startAnimation (FUN_1000084e0), read every frame by
     // animationStep (FUN_100007ef0) to extend the vertex bbox toward it.
     // ctor leaves these uninitialized; gameplay must call startAnimation
     // before setting `animating = true`.
-    float animMinX;            // 0xC8
-    float animMinY;            // 0xCC
-    float animMaxX;            // 0xD0
-    float animMaxY;            // 0xD4
+    float animMinX;
+    float animMinY;
+    float animMaxX;
+    float animMaxY;
 };
-
-// verify our Quad matches the original size (the true binary stride, not the
-// 0xC8 originally inferred from the ctor's _memcpy length).
-static_assert(sizeof(Quad) == 0xD8, "Quad must be exactly 0xD8 (216) bytes to match binary layout");

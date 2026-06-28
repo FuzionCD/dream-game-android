@@ -10,7 +10,7 @@ constexpr uint32_t LCG_MUL = 0x41A7;   // 16807, the Park-Miller MINSTD multipli
 // FUN_10005708c's fallback for `seed == 0`, so calls work even before
 // rngSeed is invoked. when the saved-game load path (FUN_100016b18) lands
 // it will overwrite all 5 with the per-level seeds from the GameSnapshot's
-// seed table at +0x358.
+// seed table.
 int g_rngState[5] = { 999, 999, 999, 999, 999 };
 
 // step the stream once and return a fraction in [0, 1].

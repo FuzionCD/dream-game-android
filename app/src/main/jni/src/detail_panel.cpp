@@ -20,7 +20,6 @@
 void DetailPanel::init() {
     mode = 0;
     visible = false;
-    std::memset(pad005, 0, sizeof(pad005));
 
     // 13 frame TileIcons + iconQuad + outerFrame: bare TileIcon init (vtable set,
     // verts in default unit-quad layout). UVs/sizes assigned below for the
@@ -33,15 +32,14 @@ void DetailPanel::init() {
     outerFrame = TileIcon();
 
     iconTexIndex = 0;
-    std::memset(padB14, 0, sizeof(padB14));
 
     // 3 ColorTints
     tintFrame.init();
 
-    // text items: the binary calls FUN_10002fa50 on textCenter (with arg
-    // game+0x10, the panel font glyph table) and FUN_10002fa08 on each of
-    // textLines[]. textLines get their glyphTablePtr written to game+0x10
-    // in the per-line loop further down. game+0x10 is BMFontTable[0]
+    // text items: the binary calls FUN_10002fa50 on textCenter (with the
+    // panel font glyph table) and FUN_10002fa08 on each of textLines[].
+    // textLines get their glyphTablePtr written to the panel font glyph table
+    // in the per-line loop further down. that table is BMFontTable[0]
     // ("font.fnt"), populated by Game::loadFonts at startup.
     {
         Game* g = getGame();
@@ -54,18 +52,15 @@ void DetailPanel::init() {
     }
 
     hasTitle = true;
-    std::memset(padF21, 0, sizeof(padF21));
     combatSimPreview = TileIcon();
 
     snagDeathTurns.init();
     playerDeathTurns.init();
 
     snagPreviewEnabled = false;
-    std::memset(pad1071, 0, sizeof(pad1071));
     perkSource = nullptr;
 
     currentAlpha = 0;
-    std::memset(pad1081, 0, sizeof(pad1081));
     fadeT = 1.0f;
 
     startPosX  = 0.0f;
@@ -74,11 +69,9 @@ void DetailPanel::init() {
     targetPosY = 0.0f;
 
     interpolatePosition = false;
-    std::memset(pad1099, 0, sizeof(pad1099));
     touchHoldArea = 0;
     touchOrigX = 0.0f;
     touchOrigY = 0.0f;
-    std::memset(pad10AC, 0, sizeof(pad10AC));
 
     // helper to assign UV+size in one go
     auto setTile = [](TileIcon& t, float u0, float v0, float u1, float v1,
@@ -141,7 +134,7 @@ void DetailPanel::init() {
     frames[10].quad.addVertexOffset(0.0f, 0.01875f);
 
     // text-line setup. binary writes per line (FUN_10003e5e0):
-    //   glyphTablePtr = game + 0x10
+    //   glyphTablePtr = the panel font glyph table
     //   scaleX = scaleY = 0.07
     //   rgba = 0xffb4aab4
     //   applyColor()
@@ -720,7 +713,7 @@ void DetailPanel::populateForHexMapCell(float headerY, const float* anchor,
     iconQuad.quad.setSize(uvSizePx[0] * SCREEN_PIXEL_INV,
                           uvSizePx[1] * SCREEN_PIXEL_INV);
 
-    // iconQuad position inside the panel (+0xBC0 in the binary). 0.117188 is
+    // iconQuad position inside the panel. 0.117188 is
     // the icon-anchor offset both modes 1/5 use; snap to the 1/640 pixel grid.
     iconQuad.quad.posX = 0.117188f;
     iconQuad.quad.posY = 0.117188f;
@@ -980,8 +973,8 @@ void DetailPanel::populateForSnag(float headerY, const float* anchor,
     //
     // Obsession (kind 0x06) is the only snag whose desc lines carry runtime
     // sprintf format placeholders (FUN_10003e154's special-case path). desc2
-    // takes the snag's consumedFlag (+0x490, seeded to 100 = 100% chance and
-    // depleted on re-draws); desc3 takes obsessionCount (+0x494, the turn
+    // takes the snag's consumedFlag (seeded to 100 = 100% chance and
+    // depleted on re-draws); desc3 takes obsessionCount (the turn
     // count). desc1 has no placeholder and is passed through untouched.
     // substitute here so the player doesn't see literal %d in the card.
     const char* desc2 = s.desc2;

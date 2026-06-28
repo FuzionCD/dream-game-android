@@ -16,7 +16,7 @@
 //   drawSegments:       FUN_1000096fc
 //   drawFrame:          FUN_100009790
 //
-// NemesisRenderable lives at GameBoard+0x9D0 (0x3A30 bytes). it's the visual
+// NemesisRenderable lives at GameBoard.nemesis (0x3A30 bytes). it's the visual
 // for the Nemesis enemy: an instant-kill antagonist that follows the player
 // each turn, consuming the path behind them. parts of this object:
 //   - 25 hex segments (the Nemesis's body, made of pieces). animated by the
@@ -30,15 +30,14 @@
 //   - 2 ColorTints layered on top: tintLevelNumber renders the Nemesis's
 //     current level in the center; tintLevelUpFlash flashes during cascade.
 //
-// each "segment slot" is 0xE0 bytes: a Quad (0xD8, includes the animation
-// target rect at +0xC8) + 0x08 bytes of segment-specific scratch (animation
+// each "segment slot" is 0xE0 bytes: a Quad (0xD8, includes its animation
+// target rect) plus 0x08 bytes of segment-specific scratch (animation
 // phase + per-segment random scale endpoint).
 
 struct NemesisSegment {
-    Quad quad;             // +0x00..+0xD7 (0xD8, owns anim rect at +0xC8)
-    uint8_t scratch[0x08]; // +0xD8..+0xDF (used by update for reform phase)
+    Quad quad;             // (0xD8, owns its anim rect)
+    uint8_t scratch[0x08]; // (used by update for reform phase)
 };
-static_assert(sizeof(NemesisSegment) == 0xE0, "NemesisSegment must be 0xE0 bytes");
 
 class NemesisRenderable {
 public:
@@ -47,12 +46,12 @@ public:
     // until placeOnHexGrid runs.
     void init();
 
-    // FUN_10000996c: just clears the visibility byte at +0x00.
+    // FUN_10000996c: just clears the visibility byte.
     void reset();
 
     // FUN_100008f64: rebuilds the two ColorTints to display the given level
-    // number, plus mirrors the count to +0x17D0 / +0x3A08. shown in the
-    // center of the Nemesis sprite.
+    // number, plus mirrors the count into nemesisLevel and cascadeLevelMirror.
+    // shown in the center of the Nemesis sprite.
     void setNemesisLevel(int level);
 
     // FUN_100008fec: sets XP count [0..20]. first N outline dots get full
@@ -93,59 +92,57 @@ public:
 
     // --- byte-exact struct fields ---
 
-    bool visible;                // +0x000
-    uint8_t pad001[7];           // +0x001..+0x007
+    bool visible;
 
-    NemesisSegment segments[25]; // +0x008..+0x15E7  (the Nemesis's body)
+    NemesisSegment segments[25]; // (the Nemesis's body)
 
-    TileIcon centerQuad;         // +0x15E8..+0x16BF (the core)
-    TileIcon bgQuad;             // +0x16C0..+0x1797 (frame around the body)
+    TileIcon centerQuad;         // (the core)
+    TileIcon bgQuad;             // (frame around the body)
 
     // hex grid coordinates of the Nemesis on the level map. placeOnHexGrid
     // computes posX from these via FUN_100012f04. read by the page-list
     // occupancy check (FUN_100020880) and several Nemesis-flow helpers.
-    int32_t nemesisGridCol;      // +0x1798
-    int32_t nemesisGridRow;      // +0x179C
+    int32_t nemesisGridCol;
+    int32_t nemesisGridRow;
 
     // facing direction (0..5; FUN_100016b18 picks based on player vs Nemesis
     // grid position). update() re-reads this when a transition completes to
     // recompute rotation: (int)facingDir - 4) * 60 degrees.
-    float facingDir;             // +0x17A0
+    float facingDir;
 
-    float posX;                  // +0x17A4
-    float posY;                  // +0x17A8
-    float rotation;              // +0x17AC
+    float posX;
+    float posY;
+    float rotation;
 
     // animation timers, all 0..1:
     //   reformT: per-move re-formation of the body segments
     //   posTransitionT: lerps posX/Y from start to target during a move
     //   bgFadeT: bg circle / outline fade-in when the Nemesis first appears
-    float reformT;               // +0x17B0
-    float posTransitionT;        // +0x17B4
-    float bgFadeT;               // +0x17B8
+    float reformT;
+    float posTransitionT;
+    float bgFadeT;
 
-    float posStartX;             // +0x17BC
-    float posStartY;             // +0x17C0
-    float posTargetX;            // +0x17C4
-    float posTargetY;            // +0x17C8
+    float posStartX;
+    float posStartY;
+    float posTargetX;
+    float posTargetY;
 
-    float transitionSpeed;       // +0x17CC  (multiplier on transition rates)
-    int32_t nemesisLevel;        // +0x17D0  (mirror of setNemesisLevel for tint 1)
-    int32_t nemesisXP;           // +0x17D4  (clamped 0..20, mirror for tint 2)
+    float transitionSpeed;       // (multiplier on transition rates)
+    int32_t nemesisLevel;        // (mirror of setNemesisLevel for tint 1)
+    int32_t nemesisXP;           // (clamped 0..20, mirror for tint 2)
 
-    ColorTint tintLevelNumber;   // +0x17D8..+0x180F  (level digits in center)
-    ColorTint tintLevelUpFlash;  // +0x1810..+0x1847  (cascade flash overlay)
+    ColorTint tintLevelNumber;   // (level digits in center)
+    ColorTint tintLevelUpFlash;  // (cascade flash overlay)
 
-    TileIcon outlineDots[20];    // +0x1848..+0x2927  (XP track, dim outline)
-    TileIcon fillDots[20];       // +0x2928..+0x3A07  (level-up cascade fill)
+    TileIcon outlineDots[20];    // (XP track, dim outline)
+    TileIcon fillDots[20];       // (level-up cascade fill)
 
     // level-up cascade state
-    int32_t cascadeLevelMirror;  // +0x3A08  (mirror of nemesisLevel for fill tint)
-    int32_t cascadeActiveIndex;  // +0x3A0C  (cycles 0..19 during cascade)
-    int32_t pendingXP;           // +0x3A10  (creditXP adds here; fade-in consumes)
-    float fillTimer;             // +0x3A14  (init 1.0; <1.0 means cascade running)
-    bool fillFlag;               // +0x3A18  (init 0; toggles cascade direction)
-    uint8_t pad3A19[7];          // +0x3A19..+0x3A1F (alignment)
+    int32_t cascadeLevelMirror;  // (mirror of nemesisLevel for fill tint)
+    int32_t cascadeActiveIndex;  // (cycles 0..19 during cascade)
+    int32_t pendingXP;           // (creditXP adds here; fade-in consumes)
+    float fillTimer;             // (init 1.0; <1.0 means cascade running)
+    bool fillFlag;               // (init 0; toggles cascade direction)
 
     // Nemesis "eat" cycle state. when the player is downed (HP=0), Nemesis
     // starts consuming trail tiles from the oldest end. these fields drive
@@ -159,14 +156,11 @@ public:
     //               cleared at the start of each step; set on advance fire.
     // names map to the game's audio vocabulary (sound 0x28/0x29/0x2A =
     // "eat content / snag / XP"), so these read as "the eating cycle."
-    int32_t eatTarget;           // +0x3A20  (= GameBoard +0x43F0)
-    bool    eatActive;           // +0x3A24
-    uint8_t pad3A25[3];          // +0x3A25..+0x3A27
-    int32_t eatStep;             // +0x3A28
-    bool    eatFired;            // +0x3A2C
-    uint8_t pad3A2D[3];          // +0x3A2D..+0x3A2F (pad to total 0x3A30)
+    int32_t eatTarget;
+    bool    eatActive;
+    int32_t eatStep;
+    bool    eatFired;
 };
-static_assert(sizeof(NemesisRenderable) == 0x3A30, "NemesisRenderable must be exactly 0x3A30 bytes");
 
 // constants from FUN_1000088f0 (constructor) and FUN_100009094 (update),
 // extracted from binary __DATA section. the binary stores some values twice

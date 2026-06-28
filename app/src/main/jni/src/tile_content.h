@@ -6,14 +6,14 @@
 
 // reconstructed from Ghidra:
 //   ctor:           FUN_100014708
-//   setType:        FUN_1000147d4 (sets +0x134, picks per-type UV/offset for
+//   setType:        FUN_1000147d4 (sets type, picks per-type UV/offset for
 //                    the sub-icon Quad)
-//   setMagnitude:   FUN_100014c6c (sets +0x13C, pushes the magnitude into the
-//                    embedded ColorTint at +0x140 which renders it as digits)
-//   getValues:      FUN_100014d70 (reads +0x134/+0x13C into a 2-int output)
+//   setMagnitude:   FUN_100014c6c (sets displayedMagnitude, pushes the magnitude
+//                    into the embedded colorTint which renders it as digits)
+//   getValues:      FUN_100014d70 (reads type/displayedMagnitude into a 2-int output)
 //
 // TileContent is the "what's on this hex tile" object, 0x178 bytes, owned by
-// TileObject at +0x200. extends the same MovableActor base class as
+// TileObject. extends the same MovableActor base class as
 // PlayerSystem and SnagContent (PTR_FUN_100074660 vtable, override at
 // PTR_FUN_1000743e0).
 //
@@ -22,9 +22,9 @@
 //   [2] 0x1000149d0, TileContent's specific draw (with sub-icon overlay
 //                    + the embedded ColorTint's digit display).
 //   [4] 0x100014a40, setPosition: baseQuad.posX/Y + propagation to the
-//                    embedded ColorTint at +0x140.
-//   [5] 0x100014b24, TBD; called from SnagContent's vtable[6] with
-//                    (this, alpha); likely a setColor / setAlpha analog.
+//                    embedded colorTint.
+//   [5] 0x100014b24, setAlpha: applies the alpha byte to baseQuad and the
+//                    embedded colorTint. called from SnagContent's vtable[6].
 //   [6] 0x100014b84, fade-stage hook. the squish: writes baseQuad.scaleX
 //                    /scaleY = cos-eased(fadeT) and mirrors the same scale
 //                    onto the embedded ColorTint. without this the placed
@@ -48,14 +48,14 @@
 //   - other types:               magnitude = 1.
 //
 // Layout split:
-//   - 0x000..0x12F  MovableActor base (vtable, visible, embedded sub-Quad,
+//   - MovableActor base (vtable, visible, embedded sub-Quad,
 //                    parent, 4-stage state-machine timers, movement queue)
-//   - 0x130..0x177  TileContent-specific:
-//                    +0x134  int type            content kind 0..0x19
-//                    +0x138  int rawMagnitude    the rolled value, set by ctor
-//                    +0x13C  int displayedMag    last magnitude pushed to
+//   - TileContent-specific:
+//                    int type            content kind 0..0x19
+//                    int rawMagnitude    the rolled value, set by ctor
+//                    int displayedMag    last magnitude pushed to
 //                                                ColorTint (change detection)
-//                    +0x140  ColorTint           renders digits + tints sub-Quad
+// ColorTint          renders digits + tints sub-Quad
 
 // FUN_100014980. read the per-content-type icon UV / size pixel coords
 // out of the table at DAT_1000787e8 (= kContentTypeUVTable in tile_content.cpp).
@@ -65,14 +65,14 @@
 void lookupContentIconUVPx(int contentType, float* uvOriginPx, float* uvSizePx);
 
 // the MovableActor's `baseQuad` IS the on-tile content icon for TileContent
-// (the binary's per-type setup writes the icon UV/offset onto the Quad at
-// +0x010, which inherits as MovableActor::baseQuad).
+// (the binary's per-type setup writes the icon UV/offset onto
+// MovableActor::baseQuad).
 class TileContent : public MovableActor {
 public:
     // FUN_100014708: zero the struct, run MovableActor::initBase, override
     // the vtable, init the ColorTint, store type/magnitude, register with the
-    // global audio dispatcher (game+0x42f8). takes the parent pointer
-    // (typically TileObject+0xE8, which ends up null in our usage).
+    // global audio dispatcher (audioState). takes the parent pointer
+    // (typically TileObject.gridCol, which ends up null in our usage).
     void init(uint32_t type, int magnitude, void* parent);
 
     // FUN_10001467c: lightweight init variant. runs MovableActor::initBase
@@ -93,7 +93,7 @@ public:
     // it as visible digit Quads), with a no-op early-out if unchanged.
     void setMagnitude(int magnitude);
 
-    // FUN_100014870: write `magnitude` to both rawMagnitude (+0x138) and
+    // FUN_100014870: write `magnitude` to both rawMagnitude and
     // displayedMagnitude (via setMagnitude). also fires the Serendipity
     // achievement check (= binary's FUN_10004e36c) for XP drops grown to
     // value 4+. callers that grow / shrink a tile's stat bonus use this;
@@ -116,7 +116,7 @@ public:
     void setPosition(float x, float y, int skipLayout = 0) override;
 
     // FUN_100014b24, TileContent's vtable[5] override. propagates alpha
-    // onto baseQuad and the embedded magnitude ColorTint at +0x140 so the
+    // onto baseQuad and the embedded magnitude colorTint so the
     // digits dim alongside the icon.
     void setAlpha(uint8_t alpha) override;
 
@@ -139,12 +139,9 @@ private:
     void repositionTintForMagnitude();
 
 public:
-    // ---- TileContent-specific (0x134..0x177; comes after MovableActor) ----
-    int       type;                // +0x134  content kind (0..0x19)
-    int       rawMagnitude;        // +0x138
-    int       displayedMagnitude;  // +0x13C
-    ColorTint colorTint;           // +0x140..+0x177
+    // ---- TileContent-specific fields (come after MovableActor) ----
+    int       type;                // content kind (0..0x19)
+    int       rawMagnitude;
+    int       displayedMagnitude;
+    ColorTint colorTint;
 };
-
-static_assert(sizeof(TileContent) == 0x178,
-              "TileContent must be exactly 0x178 bytes");

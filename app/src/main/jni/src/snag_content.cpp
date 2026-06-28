@@ -57,12 +57,12 @@ constexpr float HP_TINT_Y_LOW     = 0.001562500023f;  // DAT_10005a358 (hp <= 9)
 constexpr float HP_TINT_Y_HIGH    = 0.003125f;        // DAT_10005a35c (hp > 9)
 
 // ColorTint colors (extracted from the FUN_10003ccc8 disassembly). the binary
-// applies them in the order it inits the tints (HP at +0x3D0 first, then ATK
-// at +0x408, then DEF at +0x440). bytes shift out as R / G / B / A on a
+// applies them in the order it inits the tints (hpTint first, then atkTint,
+// then defTint). bytes shift out as R / G / B / A on a
 // little-endian target.
-//   HP tint  (+0x3D0): 0xff64ffff -> R=ff G=ff B=64 A=ff (yellow)
-//   ATK tint (+0x408): 0xffc8ffff -> R=ff G=ff B=c8 A=ff (light yellow)
-//   DEF tint (+0x440): 0xffffe6c8 -> R=c8 G=e6 B=ff A=ff (light blue)
+//   HP tint:  0xff64ffff -> R=ff G=ff B=64 A=ff (yellow)
+//   ATK tint: 0xffc8ffff -> R=ff G=ff B=c8 A=ff (light yellow)
+//   DEF tint: 0xffffe6c8 -> R=c8 G=e6 B=ff A=ff (light blue)
 constexpr uint32_t HP_TINT_COLOR  = 0xff64ffff;
 constexpr uint32_t ATK_TINT_COLOR = 0xffc8ffff;
 constexpr uint32_t DEF_TINT_COLOR = 0xffffe6c8;
@@ -71,7 +71,7 @@ constexpr uint32_t DEF_TINT_COLOR = 0xffffe6c8;
 // matches the literal `4` passed to FUN_1000570ec / FUN_1000571d0 in those
 // functions; they all share stream 4. when the saved-game load path
 // (FUN_100016b18) is ported it will seed each stream from the
-// GameSnapshot's per-level seed table at +0x358.
+// GameSnapshot's per-level seed table.
 constexpr uint32_t SNAG_RNG_STREAM = 4;
 
 // FUN_10003d244, port of the exp2f-driven stat baseline calculation.
@@ -198,7 +198,7 @@ void SnagContent::init(SnagKind kind_e, TileObject* tileObj, PlayerSystem* playe
     //        - stat modifications (Doppelganger / Infestation / Grief /
     //          Honesty / Attrition) adjust rolledAtk/Def/Hp in place;
     //        - extra-value computation (Obsession / Reluctance / Doubt /
-    //          Despair) sets the +0x490 / +0x494 scratch values, which we
+    //          Despair) sets the consumedFlag / obsessionCount scratch values, which we
     //          pass to initExplicit instead of writing directly.
     //      initExplicit applies the extras + does the Doppelganger portrait;
     //      the Indecision (0x24) spawn-time decoration is handled after the
@@ -319,12 +319,10 @@ void SnagContent::initExplicit(uint32_t kind, int hp_, int atk_, int def_,
     atkTint.init();
     defTint.init();
 
-    scale478 = 1.0f;
-    std::memset(pad47C, 0, sizeof(pad47C));
+    atkDefSwapT = 1.0f;
     tileParent   = tileObj;
     targetTile   = nullptr;
     consumedFlag = false;
-    std::memset(pad491, 0, sizeof(pad491));
 
     type = (int)kind;
 
@@ -337,7 +335,7 @@ void SnagContent::initExplicit(uint32_t kind, int hp_, int atk_, int def_,
 
     // ---- per-kind extra values ----
     // mirrors FUN_10003d614's per-kind switch: Obsession / Reluctance write
-    // the +0x490 scratch (and Obsession also +0x494 obsessionCount); Doubt /
+    // the consumedFlag scratch (and Obsession also obsessionCount); Doubt /
     // Despair set consumedFlag = (extra0 == 1); Doppelganger re-pulls the
     // portrait. every other kind ignores extra0 / extra1.
     switch (kind) {
@@ -554,27 +552,27 @@ void SnagContent::update(float dt) {
 
     MovableActor::update(dt);
 
-    // scale478 < 1 means a Mania ATK/DEF visual swap animation in flight.
+    // atkDefSwapT < 1 means a Mania ATK/DEF visual swap animation in flight.
     // cosine-eased lerp of both tints from swapped anchor to natural anchor,
     // with a sin-wave Y bounce shared between them so they arc across each
     // other.
-    if (scale478 < 1.0f) {
+    if (atkDefSwapT < 1.0f) {
         constexpr float SLIDE_PI       = 3.1415927f;   // DAT_10005a31c
         constexpr float SLIDE_Y_BOUNCE = 0.046875f;    // DAT_10005a320
 
-        float t = scale478 + dt + dt;
+        float t = atkDefSwapT + dt + dt;
 
         if (t > 1.0f) {
             t = 1.0f;
         }
-        scale478 = t;
+        atkDefSwapT = t;
 
         float yBounce = (0.5f - std::cos((t + t) * SLIDE_PI) * 0.5f) *
                         SLIDE_Y_BOUNCE;
         float lerp    = 0.5f - std::cos(t * SLIDE_PI) * 0.5f;
         // pixel-snap only on the final-frame setPosition; keeps the
         // mid-animation lerps smooth.
-        int   posMode = (scale478 < 1.0f) ? 0 : 1;
+        int   posMode = (atkDefSwapT < 1.0f) ? 0 : 1;
 
         // each tint slides from the opposite display's natural anchor (=
         // where swapAtkDefDisplay parked it) to its own display's natural
@@ -762,7 +760,7 @@ void SnagContent::swapAtkDefDisplay() {
                         1);
 
     // step 3: start the slide animation timer (consumed in vtable[3] update).
-    scale478 = 0.0f;
+    atkDefSwapT = 0.0f;
 }
 
 // reconstructed from Ghidra FUN_10003e2f8. per-snag-type combat scaling.
@@ -882,7 +880,7 @@ void SnagContent::mergeFrom(SnagContent& incoming) {
         type = incoming.type;
         refreshBaseSprite();
 
-        // 8-byte copy at +0x490 covers consumedFlag + obsessionCount, the
+        // 8-byte copy covers consumedFlag + obsessionCount, the
         // two per-type scratch fields. matches the binary's combined store.
         consumedFlag   = incoming.consumedFlag;
         obsessionCount = incoming.obsessionCount;
