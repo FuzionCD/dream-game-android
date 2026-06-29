@@ -152,7 +152,7 @@ inline constexpr EventInfo EVENT_TABLE[81] = {
     /*   1 FlashOfInsight */
     { EventKey::Control, 2,  132,   58,
       "Flash of Insight",
-      { "Discard any held tile.", "" } },
+      { "Discard any held tile.", "Does not affect special snags." } },
     /*   2 SkeletonKey */
     { EventKey::Attack, 5,  426,    0,
       "Skeleton Key",

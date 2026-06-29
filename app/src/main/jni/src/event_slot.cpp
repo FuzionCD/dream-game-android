@@ -63,7 +63,7 @@ constexpr float MARKER_H          =  12.0f;
 }   // namespace
 
 // FUN_100029a28, EventSlot::init.
-void EventSlot::init(int evType, int magnitudeBase) {
+void EventSlot::init(int evType, int initCharges) {
 
     // (1) header: eventType, then default-construct all owned quads.
     eventType = evType;
@@ -98,7 +98,7 @@ void EventSlot::init(int evType, int magnitudeBase) {
 
     // (5) chargesMax + currentCharges (clamped down to chargesMax)
     chargesMax     = (int)info.chargesMax;
-    currentCharges = (magnitudeBase > chargesMax) ? chargesMax : magnitudeBase;
+    currentCharges = (initCharges > chargesMax) ? chargesMax : initCharges;
 
     // (6) per-active-position setup. only [0, chargesMax) get configured.
     //   - chargeSlots[i]: the 20x20 backdrop sprite (always drawn); uses

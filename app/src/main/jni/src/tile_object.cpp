@@ -998,11 +998,6 @@ void TileObject::attachSnag(SnagContent* sc) {
 // sorted-by-kind doubly-linked-list insert into the decoration list at
 // three per-kind paths (UV / size / pos / sound), plus an existing-
 // node update path that toggles `suppressed` and re-seeds the alpha lerp.
-//
-// never reached on level 1 (the only Phase 3 caller is populateRack's
-// `hasSnagInBoard(0x15) -> pushDecoration(rack[0], 1, 0, 0)` branch, and
-// there's no Darkness snag in level 1's reserve), so this is forward-looking
-// work for Phase C combat / Darkness encounters.
 void TileObject::pushDecoration(int kind, int value, int flag) {
     // 1. sound trigger (kind=0 -> 0x3C, kind=2 -> 0x3D; kind=1 and any
     //    unknown kinds skip the trigger but still continue into the body,

@@ -50,9 +50,9 @@ struct EventSlot {
 
     // FUN_100029a28, full ctor. inits all Quads, looks up event-type table
     // entries to set UVs/sizes for mainQuad + eventFrame + chargeSlots[i] +
-    // chargeMarkers[i] for i in [0..chargesMax). param magnitudeBase is the
+    // chargeMarkers[i] for i in [0..chargesMax). param initCharges is the
     // requested currentCharges; clamped to chargesMax.
-    void init(int eventType, int magnitudeBase);
+    void init(int eventType, int initCharges);
 
     // FUN_100029cdc, draw the slot. binds tex 12 (items1 atlas), pushes
     // matrix with hoverState-driven Y shift if hoverState > 0, draws

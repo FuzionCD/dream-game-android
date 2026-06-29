@@ -605,6 +605,20 @@ public:
     // rules engine / reaches the level-end target too early).
     void setupDragCursorTabs(TileObject* picked);
 
+    // the trail head's continuation directions (each of the 6 it permits whose
+    // neighbor cell is free). shared by setupDragCursorTabs, tryShowXButton and
+    // hasAnyLegalPlacement; each applies its own exit-lock / fit test.
+    int trailHeadContinuationDirs(const TileObject* head, int dirs[6]) const;
+
+    // true iff `tile` fits at some continuation neighbor right now (geometry
+    // only; tryPickupRackTile decides whether it's allowed to be placed).
+    bool hasAnyLegalPlacement(const TileObject* tile) const;
+
+    // does the player hold a charged tray event that can clear at least one
+    // stuck rack tile? the clog flags say which tile categories are present.
+    bool anyChargedEscapeEvent(bool clogSpecialSnag, int nonSpecialSnagCount,
+                               bool clogNonSnag) const;
+
     // tryPickupRackTile, FUN_100023ba8. validates whether the player can
     // pick up the given rack tile under current rack/snag state. returns
     // true on "normal pickup OK"; returns false when blocked or when a

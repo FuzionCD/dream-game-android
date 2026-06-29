@@ -196,6 +196,12 @@ namespace {
         return 1;
     }
 
+// hex direction deltas (col, row) for the 6 neighbors. shared by the trail-head
+// continuation walks (cursor tabs, X button, hasAnyLegalPlacement).
+    constexpr int kHexDirDeltas[6][2] = {
+        { 0, -1}, { 1,  0}, { 1,  1}, { 0,  1}, {-1,  0}, {-1, -1},
+    };
+
 // FUN_100013084, find the best rotation 0..5 for placing `picked` at
 // neighborCoord adjacent to lastPageTile. returns the chosen rotation, or
 // -1 if no rotation passes placementFitsAtRotation.
@@ -629,33 +635,6 @@ GameBoard* GameBoard::create() {
     pBoard->tileWeightPool.push_back({6, 10, 10});
     pBoard->tileWeightPool.push_back({5, 15, 15});
     pBoard->tileWeightPool.push_back({1, 15, 15});
-
-#ifdef DEBUG_FAST_CTRL_ENABLED
-    // DEBUG: pre-install 2 events into the HUD tray so Phase E3 can be
-    // visually verified before the events panel (E4) and firing (E5)
-    // land. one Attack-key event (charges per {A} tile placed) + one
-    // Defence-key event (charges per {D} tile placed); both pick up
-    // charges through the already-wired applyTileTypeEffect commit path.
-    // delete with the rest of the DEBUG_FAST_CTRL block when shipping.
-    {
-        EventSlot* dbgEvent1 = new EventSlot();
-        dbgEvent1->init(/*eventType=*/(int)EventKind::HardWork, /*magnitudeBase=*/0);   // SkeletonKey (Attack, chargesMax=5)
-        pBoard->hud.addEventSlot(dbgEvent1);
-
-        EventSlot* dbgEvent2 = new EventSlot();
-        dbgEvent2->init(/*eventType=*/(int)EventKind::Backtrack, /*magnitudeBase=*/0);   // HardenedShell (Defence, chargesMax=5)
-        pBoard->hud.addEventSlot(dbgEvent2);
-
-        EventSlot* dbgEvent3 = new EventSlot();
-        dbgEvent3->init(/*eventType=*/(int)EventKind::Countdown, /*magnitudeBase=*/0);   // HardenedShell (Defence, chargesMax=5)
-        pBoard->hud.addEventSlot(dbgEvent3);
-
-        EventSlot* dbgEvent4 = new EventSlot();
-        dbgEvent4->init(/*eventType=*/(int)EventKind::IdyllicLandscape, /*magnitudeBase=*/0);   // HardenedShell (Defence, chargesMax=5)
-        pBoard->hud.addEventSlot(dbgEvent4);
-
-    }
-#endif
 
     SDL_Log("GameBoard::create() complete (state=%d, virtualHeight=%.3f)", pBoard->state, virtualHeight);
     return pBoard;
@@ -2170,30 +2149,16 @@ void GameBoard::tryShowXButton() {
         return;
     }
 
-    static constexpr int kDirDeltas[6][2] = {
-        { 0, -1},  // 0
-        { 1,  0},  // 1
-        { 1,  1},  // 2
-        { 0,  1},  // 3
-        {-1,  0},  // 4
-        {-1, -1},  // 5
-    };
-
     bool       found        = false;
     HexCellPos foundCellPos = { 0.0f, 0.0f };
 
-    for (int dir = 0; dir < 6; dir++) {
+    int dirs[6];
+    int dirCount = trailHeadContinuationDirs(newest, dirs);
 
-        if (!newest->permitsDirection(dir, -1)) {
-            continue;
-        }
-
-        int targetCol = newest->gridCol + kDirDeltas[dir][0];
-        int targetRow = newest->gridRow + kDirDeltas[dir][1];
-
-        if (cellIsOccupied(targetCol, targetRow)) {
-            continue;
-        }
+    for (int k = 0; k < dirCount; k++) {
+        int dir       = dirs[k];
+        int targetCol = newest->gridCol + kHexDirDeltas[dir][0];
+        int targetRow = newest->gridRow + kHexDirDeltas[dir][1];
 
         // exit-locked: skip the exit hex while still need keys.
         if (targetCol == exitGridCol && targetRow == exitGridRow &&
@@ -2236,8 +2201,8 @@ void GameBoard::tryShowXButton() {
         bool allSubBlocked = true;
 
         for (int sub = 0; sub < 6; sub++) {
-            int subCol = targetCol + kDirDeltas[sub][0];
-            int subRow = targetRow + kDirDeltas[sub][1];
+            int subCol = targetCol + kHexDirDeltas[sub][0];
+            int subRow = targetRow + kHexDirDeltas[sub][1];
 
             if (!cellIsOccupied(subCol, subRow)) {
                 allSubBlocked = false;
@@ -2470,12 +2435,16 @@ void GameBoard::refillRackPostCommit() {
 
     AchievementTracker& tracker = getGame()->achievementTracker();
 
-    // EndOfTheLine optimization gate (= binary's `!FUN_10004d6c4(.., 0x27)`):
-    // once unlocked, we skip the rack-validation chain entirely. otherwise
-    // any tile that passes either validator flips this true, suppressing the
-    // increment at the bottom. matches the binary's bVar2 tracking exactly.
-    bool anyTilePlayable = !tracker.isLocked(
+    // EndOfTheLine: once unlocked, skip the scan. otherwise fire only when the
+    // rack is well and truly irredeemable (the gate after the loop).
+    bool checkEndOfTheLine = tracker.isLocked(
         static_cast<uint32_t>(AchievementId::EndOfTheLine));
+
+    bool anyPlayable         = false;
+    bool anyContentPlaceable = false;   // a stuck tile a red-X could free (allowed to place, no hex)
+    bool clogSpecialSnag     = false;   // stuck special snag (alive snag, type != 1)
+    int  nonSpecialSnagCount = 0;       // stuck non-special-snag tiles (Emergency Broadcast needs 2)
+    bool clogNonSnag         = false;   // stuck non-snag tile (for Flying / Exhaustion)
 
     for (int i = 0; i < RACK_SLOT_COUNT; i++) {
 
@@ -2486,38 +2455,63 @@ void GameBoard::refillRackPostCommit() {
         // type-0x3C rack snag: gains atk/def/hp equal to refilled-count.
         // floating "+N" tween fires from each stat tint at zero offset.
         if (rack[i]->getSnagType() == 0x3C) {
-            SnagContent* sn = rack[i]->getSnagIfAlive();
+            SnagContent *sn = rack[i]->getSnagIfAlive();
 
             if (sn) {
-                float zero[2] = { 0.0f, 0.0f };
+                float zero[2] = {0.0f, 0.0f};
                 sn->setAtkDisplay(sn->atk + refilled, this, zero);
                 sn->setDefDisplay(sn->def + refilled, this, zero);
-                sn->setHpDisplay (sn->hp  + refilled, this, zero);
+                sn->setHpDisplay(sn->hp + refilled, this, zero);
             }
         }
 
-        if (!anyTilePlayable
-            && !canDiscardRackTile(rack[i])) {
-            // dry-run pickup check (commit=false): no action queue side
-            // effects, returns true iff the tile would be a legal pickup.
-            //
-            // TODO_polish: tryPickupRackTile doesn't walk the hex grid to
-            // verify a valid placement target exists, so a rack of e.g. 5
-            // special snags with no legal hexes still reads as "playable"
-            // and suppresses this achievement. matches the binary's
-            // behavior but is looser than the table description ("hold 5
-            // unplaceable/undiscardable tiles"). worth tightening once the
-            // rest of the binary is faithfully ported.
-            anyTilePlayable = tryPickupRackTile(rack[i], false);
+        if (!checkEndOfTheLine || anyPlayable) {
+            continue;  // unlocked, or an out already found: skip the EOTL scan
+        }
+
+        // look for an immediate out, most-likely check first: a tile you can
+        // pick up AND legally place (the geometry walk stays behind the cheap
+        // pickup gate), else one you can discard.
+        bool allowedToPlace = tryPickupRackTile(rack[i], false);
+
+        if ((allowedToPlace && hasAnyLegalPlacement(rack[i])) ||
+            canDiscardRackTile(rack[i])) {
+            anyPlayable = true;
+            continue;
+        }
+
+        // stuck tile: bucket it for the red-X / escape-event gates below.
+        if (allowedToPlace) {
+            anyContentPlaceable = true;  // only geometry blocks it; a red-X could open a hex
+        }
+
+        SnagContent *sc = rack[i]->getSnagIfAlive();
+
+        if (sc && rack[i]->getSnagType() != 1) {
+            clogSpecialSnag = true;
         } else {
-            anyTilePlayable = true;
+            nonSpecialSnagCount++;
+
+            if (!sc) {
+                clogNonSnag = true;
+            }
         }
     }
 
-    // achievement "End of the Line" (= binary's FUN_10004e35c). fires when
-    // the rack contains nothing the player can play or discard.
-    if (!anyTilePlayable) {
-        tracker.increment(AchievementId::EndOfTheLine);
+    if (checkEndOfTheLine && !anyPlayable) {
+        // xButtonVisible is recomputed later (applyChainStatBumpsToRack); the
+        // trail is unchanged between here and there, so refresh it for the gate.
+        tryShowXButton();
+
+        bool redXredeems = xButtonVisible && anyContentPlaceable;
+        bool escape      = anyChargedEscapeEvent(clogSpecialSnag, nonSpecialSnagCount, clogNonSnag);
+
+        // fire only when the rack is irredeemable: nothing playable, no recoverable
+        // dead-end a red-X could escape (it only helps a content-placeable tile),
+        // and no charged tray event that can clear the clog.
+        if (!redXredeems && !escape) {
+            tracker.increment(AchievementId::EndOfTheLine);
+        }
     }
 }
 
@@ -8365,27 +8359,13 @@ void GameBoard::setupDragCursorTabs(TileObject* picked) {
     // the exitGridCol/exitGridRow pair.
     const int exitCoord[2] = {exitGridCol, exitGridRow };
 
-    static constexpr int kDirDeltas[6][2] = {
-        { 0, -1},  // 0
-        { 1,  0},  // 1
-        { 1,  1},  // 2
-        { 0,  1},  // 3
-        {-1,  0},  // 4
-        {-1, -1},  // 5
-    };
+    int dirs[6];
+    int dirCount = trailHeadContinuationDirs(lastTile, dirs);
 
-    for (int dir = 0; dir < 6; dir++) {
-
-        if (!lastTile->permitsDirection(dir, -1)) {
-            continue;
-        }
-
-        int neighborCol = lastTile->gridCol + kDirDeltas[dir][0];
-        int neighborRow = lastTile->gridRow + kDirDeltas[dir][1];
-
-        if (cellIsOccupied(neighborCol, neighborRow)) {
-            continue;
-        }
+    for (int k = 0; k < dirCount; k++) {
+        int dir = dirs[k];
+        int neighborCol = lastTile->gridCol + kHexDirDeltas[dir][0];
+        int neighborRow = lastTile->gridRow + kHexDirDeltas[dir][1];
 
         tileCursorVisible[dir] = true;
 
@@ -8434,6 +8414,146 @@ void GameBoard::setupDragCursorTabs(TileObject* picked) {
         tileCursorQuads[dir].quad.posX = cellPos.x;
         tileCursorQuads[dir].quad.posY = cellPos.y;
     }
+}
+
+// the trail head's continuation directions (each of the 6 it permits whose
+// neighbor cell is free). callers apply their own exit-lock / fit test.
+int GameBoard::trailHeadContinuationDirs(const TileObject* head, int dirs[6]) const {
+    int n = 0;
+
+    for (int dir = 0; dir < 6; dir++) {
+
+        if (!head->permitsDirection(dir, -1)) {
+            continue;
+        }
+
+        int col = head->gridCol + kHexDirDeltas[dir][0];
+        int row = head->gridRow + kHexDirDeltas[dir][1];
+
+        if (cellIsOccupied(col, row)) {
+            continue;
+        }
+
+        dirs[n++] = dir;
+    }
+
+    return n;
+}
+
+// true iff `tile` has at least one legal placement right now: some continuation
+// neighbor where it fits (any rotation), the key-locked exit aside. an empty
+// board accepts any tile. geometry only; tryPickupRackTile decides whether the
+// tile is allowed to be placed at all.
+bool GameBoard::hasAnyLegalPlacement(const TileObject* tile) const {
+
+    if (pageList.empty()) {
+        return true;
+    }
+
+    const TileObject* head = pageList.back();
+
+    if (!head) {
+        return false;
+    }
+
+    const int exitCoord[2] = { exitGridCol, exitGridRow };
+
+    int dirs[6];
+    int dirCount = trailHeadContinuationDirs(head, dirs);
+
+    for (int k = 0; k < dirCount; k++) {
+        int dir = dirs[k];
+        int col = head->gridCol + kHexDirDeltas[dir][0];
+        int row = head->gridRow + kHexDirDeltas[dir][1];
+
+        // a key-locked exit hex is never a legal placement.
+        if (col == exitGridCol && row == exitGridRow &&
+            keysCollected < keysRequired) {
+            continue;
+        }
+
+        // feed the exit coord to the rules engine only while keys are still
+        // outstanding (and not one hex from the end), so it forbids connecting
+        // to the exit early. mirrors setupDragCursorTabs's end-gate.
+        const int* effectiveEnd = nullptr;
+
+        if (!(keysRequired <= keysCollected) &&
+            !(keysRequired <= keysCollected + 1 &&
+              hexGridDistance(col, row, exitCoord[0], exitCoord[1]) == 1)) {
+            effectiveEnd = exitCoord;
+        }
+
+        if (canPlaceAtNeighbor(tile, col, row, head, pageList, effectiveEnd)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// does the player hold a charged tray event that can clear at least one stuck
+// rack tile? matched to fireEvent's staging filters: special-snag clearers
+// target snags with type != 1, non-snag clearers target everything else, Flying
+// only non-snag tiles, and Rewind always discards rack[0] (always stuck here).
+// an event counts only when its target category is actually clogging the rack.
+bool GameBoard::anyChargedEscapeEvent(bool clogSpecialSnag, int nonSpecialSnagCount,
+                                      bool clogNonSnag) const {
+
+    for (int i = 0; i < 4; i++) {
+        EventSlot* ev = hud.eventTray[i].slotPtr;
+
+        if (!ev || ev->currentCharges < ev->chargesMax) {
+            continue;
+        }
+
+        switch ((EventKind)ev->eventType) {
+            case EventKind::Rewind:
+                return true;
+
+            case EventKind::SuddenPhoneCall:
+            case EventKind::Metamorphosis:
+                if (clogSpecialSnag) {
+                    return true;
+                }
+                break;
+
+            // discard/convert one non-special-snag held tile (sc==null || type==1)
+            case EventKind::FlashOfInsight:
+            case EventKind::Falling:
+            case EventKind::UntappedPotential:
+            case EventKind::ABriefPause:
+            case EventKind::HiddenWealth:
+            case EventKind::StrongMedicine:
+            case EventKind::Premonition:
+            case EventKind::Backtrack:
+            case EventKind::FearlessDefence:
+            case EventKind::CostlyGift:
+                if (nonSpecialSnagCount >= 1) {
+                    return true;
+                }
+                break;
+
+            // discards two non-special-snag tiles, so needs at least two
+            case EventKind::EmergencyBroadcast:
+                if (nonSpecialSnagCount >= 2) {
+                    return true;
+                }
+                break;
+
+            // discard one non-snag held tile (sc==null)
+            case EventKind::Flying:
+            case EventKind::Exhaustion:
+                if (clogNonSnag) {
+                    return true;
+                }
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    return false;
 }
 
 // FUN_100023ac4, commitRackTilePickup.
@@ -9245,16 +9365,8 @@ void GameBoard::onPointerReleasedDuringDrag() {
             } else {
                 TileObject* anchorTile = pageList.back();
 
-                static constexpr int kCommitDeltas[6][2] = {
-                    { 0, -1},  // 0
-                    { 1,  0},  // 1
-                    { 1,  1},  // 2
-                    { 0,  1},  // 3
-                    {-1,  0},  // 4
-                    {-1, -1},  // 5
-                };
-                neighborCol = anchorTile->gridCol + kCommitDeltas[chosenDir][0];
-                neighborRow = anchorTile->gridRow + kCommitDeltas[chosenDir][1];
+                neighborCol = anchorTile->gridCol + kHexDirDeltas[chosenDir][0];
+                neighborRow = anchorTile->gridRow + kHexDirDeltas[chosenDir][1];
             }
 
             heldTile->setGridCoord(neighborCol, neighborRow);
@@ -10378,12 +10490,6 @@ void GameBoard::nemesisSpawnAtTrailTail() {
         secondOldest = *it;
     }
 
-    // hex direction offsets indexed 0..5. matches the binary's switch in
-    // FUN_10001c1a4 (with the case-2/case-5 fallthrough flattened):
-    //   0=(0,-1) 1=(+1,0) 2=(+1,+1) 3=(0,+1) 4=(-1,0) 5=(-1,-1)
-    constexpr int DIR_DC[6] = { 0,  1,  1, 0, -1, -1 };
-    constexpr int DIR_DR[6] = { -1, 0,  1, 1,  0, -1 };
-
     // walk directions, collect those that (a) have an exit on oldest and
     // (b) don't step back onto secondOldest.
     std::vector<int> validDirs;
@@ -10395,8 +10501,8 @@ void GameBoard::nemesisSpawnAtTrailTail() {
         }
 
         if (secondOldest != nullptr) {
-            int targetCol = oldest->gridCol + DIR_DC[dir];
-            int targetRow = oldest->gridRow + DIR_DR[dir];
+            int targetCol = oldest->gridCol + kHexDirDeltas[dir][0];
+            int targetRow = oldest->gridRow + kHexDirDeltas[dir][1];
 
             if (targetCol == secondOldest->gridCol &&
                 targetRow == secondOldest->gridRow) {
@@ -10415,8 +10521,8 @@ void GameBoard::nemesisSpawnAtTrailTail() {
     int pickIdx = rngInt(0, (int)validDirs.size() - 1, 0);
     int pickedDir = validDirs[pickIdx];
 
-    int spawnCol = oldest->gridCol + DIR_DC[pickedDir];
-    int spawnRow = oldest->gridRow + DIR_DR[pickedDir];
+    int spawnCol = oldest->gridCol + kHexDirDeltas[pickedDir][0];
+    int spawnRow = oldest->gridRow + kHexDirDeltas[pickedDir][1];
 
     // compute facing direction (which neighbor index of `oldest` is `spawn`
     // sitting at?). matches the binary's branchy comparison ladder.
@@ -12402,6 +12508,19 @@ void GameBoard::initLevel(int characterIndex, uint32_t worldIndex,
     hud.clearEventSlots();
     hud.clearCTRLBank();
     hud.clearXPBank();
+
+#ifdef DEBUG_FAST_CTRL_ENABLED
+    // delete with the rest of the DEBUG_FAST_CTRL block when shipping.
+    {
+        EventSlot* dbgEvent1 = new EventSlot();
+        dbgEvent1->init((int)EventKind::Rewind, 7);   // SkeletonKey (Attack, chargesMax=5)
+        hud.addEventSlot(dbgEvent1);
+
+        EventSlot* dbgEvent2 = new EventSlot();
+        dbgEvent2->init((int)EventKind::Metamorphosis, 3);   // HardenedShell (Defence, chargesMax=5)
+        hud.addEventSlot(dbgEvent2);
+    }
+#endif
 
     // section 8: reset visual state.
     // FUN_1000165e8 does not touch dimQuad alpha or dimProgress; those are
