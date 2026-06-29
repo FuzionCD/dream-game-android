@@ -898,6 +898,12 @@ public:
     bool snagActivationSuppressed;
     bool snagMarchPending;            // gates marchPageSnags() in turn-resolve state 3; armed after a committed turn
     bool combatEffectsSuppressed;
+
+    // set by resolveSnagCombat to a dying snag's tile before a lethal setHP
+    // so setHP's eat logic counts the kill's not-yet-created XP tile
+    // (Nemesis stops there instead of eating past it). null else.
+    class TileObject* pendingKillXpTile = nullptr;
+
     // run-wide turn counter. ++ in state-8 tile-resolution. resets only in
     // initLevel (= new run), not per-level despite the historical name; the
     // score panel reads GameBoard.totalTurnCount as "Turns Taken" (run-wide). also drives the

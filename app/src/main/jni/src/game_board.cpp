@@ -6010,9 +6010,23 @@ void GameBoard::resolveSnagCombat(SnagContent* snag) {
 
     // ---- apply player HP loss (skipped under combatEffectsSuppressed) ----
     if (!combatEffectsSuppressed && playerDamage > 0) {
+
+        // a kill's XP tile is created only after setHP, so mark it now for
+        // setHP's eat-tally (else Nemesis eats past the revive). snag dies
+        // dies iff (int)snagDamage >= entry hp (matches deductHpClamped);
+        // XP is counted iff tier > 0 and not the Malaise no-XP path.
+        bool snagWillDie = (int32_t)snagDamage >= (int32_t)snagHpAtEntry;
+        bool malaiseNoXp = (snag->type == 0x1b) && (snag->def != 0);
+
+        if (snagWillDie && snag->tier() > 0 && !malaiseNoXp) {
+            pendingKillXpTile = snag->tileParent;
+        }
+
         int hpLoss = (playerDamage <= playerSystem.currentHealth)
                          ? playerDamage : playerSystem.currentHealth;
         setHP((uint32_t)(playerSystem.currentHealth - hpLoss));
+
+        pendingKillXpTile = nullptr;
     }
 
     // ---- snag HP loss display + sounds --------------------------------
@@ -7663,16 +7677,9 @@ void GameBoard::setHP(uint32_t value) {
         // and shortens its eat range by one; we stop when its level's worth
         // of XP would be consumed.
         //
-        // TODO_polish: BINARY-SHARES-BUG (death-revive skip). the budget is
-        // nemesisLevel and this walk counts only pre-existing type-4 (XP)
-        // tiles. a snag killed this same turn becomes a type-4 tile only later
-        // (resolveSnagCombat's setTileContent(4,...) runs after this setHP
-        // call), so at Nemesis level 1 with no prior XP tile in the trail,
-        // tally == pageList.size(): Nemesis eats the whole trail and the
-        // state-7 game-over fires before the state-8 revive. faithful to the
-        // binary (FUN_100020d80 + FUN_100025dcc ordering). a gameplay fix (e.g.
-        // clamp tally to pageList.size()-1 so a level-1 death leaves one tile
-        // and reaches the revive) would be a deliberate deviation.
+        // pendingKillXpTile counts as a kind-4 tile here, so a snag killed
+        // on this same combat turn exposes its not-yet-created XP and Nemesis
+        // stops at it. a no-XP death still eats the whole trail.
         int tally = 0;
 
         if (!pageList.empty()) {
@@ -7682,7 +7689,7 @@ void GameBoard::setHP(uint32_t value) {
             for (TileObject* t : pageList) {
                 tally = idx;
 
-                if (t && t->getContentType() == 4) {
+                if (t && (t->getContentType() == 4 || t == pendingKillXpTile)) {
 
                     if (xpBudget < 2) {
                         break;
