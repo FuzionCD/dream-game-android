@@ -1,5 +1,3 @@
-*NOTE: I am in the middle of a large refactor of this codebase. What is committed here is an older version than what I have on disk. Expect the structure to change significantly soon.*
-
 <div align="center">
 
 ![App Logo](app/src/main/assets/320x320iconRounded.png)
