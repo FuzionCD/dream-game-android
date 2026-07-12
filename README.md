@@ -31,7 +31,18 @@ Place tiles to boost your attack and defence, defeat enemies to level up your ch
 
 # Screenshots
 
-[TBA]
+<div align="center">
+    <a href="meta/screenshots/carousel1.png"><img src="meta/screenshots/carousel1.png" width="30%"></a>
+    <a href="meta/screenshots/carousel2.png"><img src="meta/screenshots/carousel2.png" width="30%"></a>
+    <a href="meta/screenshots/carousel3.png"><img src="meta/screenshots/carousel3.png" width="30%"></a>
+    <br>
+    <a href="meta/screenshots/carousel4.png"><img src="meta/screenshots/carousel4.png" width="30%"></a>
+    <a href="meta/screenshots/carousel5.png"><img src="meta/screenshots/carousel5.png" width="30%"></a>
+    <a href="meta/screenshots/carousel6.png"><img src="meta/screenshots/carousel6.png" width="30%"></a>
+    <br>
+    <a href="meta/screenshots/carousel7.png"><img src="meta/screenshots/carousel7.png" width="30%"></a>
+    <a href="meta/screenshots/carousel8.png"><img src="meta/screenshots/carousel8.png" width="30%"></a>
+</div>
 
 # Building from Source
 
