@@ -420,11 +420,11 @@ void TitleMenu::initVisuals(bool hasKeys, bool hasAnyScore) {
         }
 
         // set up 20x2 tile grid backgrounds
-        // UV: (0.1533, 0.1602) to (0.1543, 0.207), size varies
-        for (int row = 0; row < BOARD_GRID_ROWS; row++) {
-            float randomWidth = randomFloat(PARTICLE_SPREAD_X, PARTICLE_SPREAD_Y);
-            float tileH = randomWidth * (virtualHeight / 1.5f) * 0.5f;
+        // UV: (0.1533, 0.1602) to (0.1543, 0.207), thickness is roughly ~0.75/(360/BOARD_GRID_ROWS)
+        const float beamThickness = 4.7f / BOARD_GRID_ROWS;
+        float tileH = beamThickness * (virtualHeight / 1.5f) * 0.75f;
 
+        for (int row = 0; row < BOARD_GRID_ROWS; row++) {
             for (int col = 0; col < BOARD_GRID_COLS; col++) {
                 int idx = row * BOARD_GRID_COLS + col;
 
