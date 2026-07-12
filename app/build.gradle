@@ -12,10 +12,7 @@ android {
         versionName "1.0.0"
 
         ndk {
-            // arm64 only — the iOS Dream binary is arm64, and our byte-exact
-            // class layouts assume 8-byte pointers (vtable, void*, int64_t).
-            // Building for armeabi-v7a (32-bit ARM) would break every
-            // sizeof()/offsetof() static_assert in the port.
+            // arm64 only
             abiFilters 'arm64-v8a'
         }
 
@@ -52,6 +49,6 @@ android {
             ]
         }
     }
-    ndkVersion '30.0.14904198 rc1'
-    buildToolsVersion '34.0.0'
+    // NDK r27c LTS, pinned for reproducible builds.
+    ndkVersion '27.2.12479018'
 }

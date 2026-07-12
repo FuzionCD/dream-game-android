@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(Dream)
 
+# reproducible build flags, applied before the add_subdirectory calls so they
+# propagate to every target below
+add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
+add_compile_options("-ffile-prefix-map=${ANDROID_NDK}=/ndk")
+add_link_options("-Wl,--build-id=none")
+
 # sdl2
 add_subdirectory(SDL2)
 
