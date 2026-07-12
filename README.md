@@ -35,11 +35,54 @@ Place tiles to boost your attack and defence, defeat enemies to level up your ch
 
 # Building from Source
 
-[TBA]
+IKHTD is written in C++ with a thin Java/SDL2 shell. It builds entirely from source: its only dependencies, SDL2, SDL2_mixer, and OpenAL-soft, are linked as submodules and compiled by CMake, so nothing is fetched from the network at build time.
+
+The app targets `arm64-v8a` only, and supports Android 5.0 (API 21) and up.
+
+## Requirements
+
+| Component | Version |
+| --- | --- |
+| JDK | 21 (17 or newer works) |
+| Android SDK Platform | android-35 |
+| Android SDK Build-Tools | 36.0.0 |
+| Android NDK | 27.2.12479018 (r27c LTS) |
+| CMake | 3.22.1 or newer |
+
+## Android Studio
+
+Open the project, let it sync, and press Run. If prompted, install NDK `27.2.12479018` and CMake `3.22.1` from *Tools > SDK Manager > SDK Tools > Show Package Details*.
+
+## Command line
+
+```sh
+./gradlew assembleRelease
+```
+
+The unsigned release APK is written to `app/build/outputs/apk/release/app-release-unsigned.apk`.
+
+## Reproducible build (Docker)
+
+Release builds are produced in a pinned Debian container that mirrors F-Droid's build environment. Because the source is mounted at a fixed path and all build paths are normalized (via the `-ffile-prefix-map` and `--build-id=none` flags in [app/src/main/jni/CMakeLists.txt](app/src/main/jni/CMakeLists.txt)), the output is byte-for-byte identical no matter which machine builds it. This is the build that is signed and published.
+
+```sh
+docker build -t dream-build .
+
+docker run --rm \
+  --user "root:root" \
+  -v "$PWD":/project \
+  -e HOME=/tmp \
+  -e GRADLE_USER_HOME=/project/.gradle-docker \
+  dream-build \
+  ./gradlew --no-daemon clean assembleRelease
+```
 
 # Contributing
 
-[TBA]
+Contributions are welcome, whether it's a bug report, fix, device testing, or improvement to documentation.
+
+* **Bugs and suggestions:** open an issue with a description of the problem, your device model and Android version, and the steps to reproduce it. If you're suggesting, give your reasoning for why you think your feature would improve the game.
+* **Pull requests:** Currently, this project is *not* accepting PRs.
 
 # Credits
 
@@ -48,3 +91,4 @@ This game is a full ground-up rewrite of the iOS app "I Keep Having This Dream" 
 * **Alex Kuptsov**, for the now-lost iOS original.
 * **libsdl**, for SDL and SDL-mixer
 * **kcat**, for OpenAL-soft
+* Alex Arcoleo, James Bargent, Bob Bradley, Michael Bradley, Steve Dymond, Andreas Georgallis, Barrie Gledden, Joe Henson, Alex Kovacs, David O'Brien, Jason Pedder, Tom Quick, Adam Skinner, Dan Skinner, Tom Stubbs, Ben Ziapour: for the wonderful music used in this game
