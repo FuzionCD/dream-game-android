@@ -63,11 +63,10 @@ public:
                        uint32_t outlineRgba);
 
     // FUN_100039018. dispatches to initFromLines with the 0xFFFFAAFA /
-    // dream-snippet palette and the static 81-entry snippet
-    // table (= DreamSnippets::table()). out-of-range entryIdx clamps to
-    // 1, matching the binary's `if (table.size() <= idx) idx = 1` guard.
-    // called from GameBoard::initLevelContent to display the level-start
-    // dream snippet.
+    // dream-snippet palette and the static snippet table (= DreamSnippets::table()).
+    // out-of-range entryIdx clamps to 1, matching the binary's
+    // `if (table.size() <= idx) idx = 1` guard. called from
+    // GameBoard::initLevelContent to display the level-start dream snippet.
     void init(uint32_t entryIdx, const float* posPair);
 
     // FUN_100039ea4, thin wrapper around initFromLines for callers that

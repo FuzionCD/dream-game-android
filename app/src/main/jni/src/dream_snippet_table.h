@@ -1,9 +1,9 @@
-// auto-extracted from FUN_1000390b0 (lazy-builder of DAT_10007dfe0).
-// 81 entries; each is 1-4 narrative lines used by the
-// level-start dream-snippet banner (AnimationController::init).
-// strings live at .rodata addresses 0x10005fa4e..0x100061219
-// in the iOS Mach-O. note: an entry's lines render with a small font scale
-// (DAT_10005a25c) on top of the world-transition fade.
+// 103 entries; each is 1-3 narrative lines used by the level-start
+// dream-snippet banner (AnimationController::init).
+
+// entries 0-80 auto-extracted from FUN_1000390b0 (lazy-builder of
+// DAT_10007dfe0); entries 81+ I wrote my-self for this port
+// to expand the original set.
 
 #pragma once
 
@@ -95,6 +95,29 @@ inline const std::vector<std::vector<std::string>>& table() {
         {"Sometimes the", "blood makes it turn human,", "but never for long"},  // 78
         {"Sometimes I know", "I'll soon forget all of this,", "so I just stop worrying"},  // 79
         {"Sometimes I am the void,", "and I consume everything", "but create nothing"},  // 80
+        {"Sometimes the hallway keeps", "getting longer behind me,", "and I daren't turn around"},  // 81
+        {"Sometimes I'm following tracks", "in the snow ahead of me,", "and never catch who left them"},  // 82
+        {"Sometimes I'm wearing your face,", "and no one knows the difference,", "least of all me"},  // 83
+        {"Sometimes my reflection runs away,", "and I have to hurry", "to catch up to myself"},  // 84
+        {"Sometimes the stairs only", "ever lead back to the stairs,", "and still I keep climbing"},  // 85
+        {"Sometimes I let it ring", "and ring, and promise myself", "I'll answer the next one"},  // 86
+        {"Sometimes I save you a seat,", "and wait out the whole night", "               ", "The night is very long"},  // 87
+        {"Sometimes the photos are blank,", "and I can't remember", "who I kept them for"},  // 88
+        {"Sometimes I'm feeding the fire,", "and I know that if I stop,", "it will turn on me"},  // 89
+        {"Sometimes the birds fly backwards,", "unstitching the sky as they go"},  // 90
+        {"Sometimes the city is a ribcage,", "a cathedral of pale bone", "curled around the empty square"}, // 91
+        {"Sometimes there are two moons,", "and the tide can't decide", "which one to follow"},  // 92
+        {"Sometimes I burn the old letters", "to keep myself warm,", "and I tell myself they're just paper"},   // 93
+        {"Sometimes the words rearrange", "themselves before I can read them,", "as if they'd rather not be known"},  // 94
+        {"Sometimes the ground won't hold me,", "and I sink a little with each step,", "but no one else seems to notice"},  // 95
+        {"Sometimes the current takes me,", "and it's almost a relief", "to stop pretending to steer"},  // 96
+        {"Sometimes I'm looking for a room", "I'm sure used to be here,", "but the house plays dumb"},  // 97
+        {"Sometimes there's a light ahead,", "and the closer I get to it,", "the more distance there is to cross"},  // 98
+        {"Sometimes I stop checking the locks", "and let whatever's coming come", "               ", "I sleep better, after that"},  // 99
+        {"Sometimes I'm on the water", "and a dark shadow falls over me", "when I look up, it's already too late"},  // 100
+        {"Sometimes the ivy has taken the gate,", "and I'm almost grateful", "for the excuse to stay"},  // 101
+        {"Sometimes I try to warn them,", "but the words won't come,", "and they smile and wave"},  // 102
+        {"Sometimes the floor is thin glass,", "a cracked sheet of nothing", "spread over the vast underneath"} // 103
     };
     return kTable;
 }
