@@ -1,0 +1,9 @@
+[submodule "app/src/main/jni/SDL2"]
+	path = app/src/main/jni/SDL2
+	url = https://github.com/libsdl-org/SDL.git
+[submodule "app/src/main/jni/SDL2_mixer"]
+	path = app/src/main/jni/SDL2_mixer
+	url = https://github.com/libsdl-org/SDL_mixer.git
+[submodule "app/src/main/jni/openal-soft"]
+	path = app/src/main/jni/openal-soft
+	url = https://github.com/kcat/openal-soft.git
