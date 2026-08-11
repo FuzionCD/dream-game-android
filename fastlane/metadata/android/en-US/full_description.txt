@@ -1,0 +1,18 @@
+In this strategy-roguelike, build a path of tiles to escape each successive
+cycle of your dreamscape. A cycle grows more dangerous the longer you stay, so
+plan your route carefully and make the most of the challenges and opportunities
+you meet along the way.
+
+Place tiles to boost your attack and defence, defeat enemies to level up, and
+choose the right perks to stay safe as your ever-present pursuer grows stronger.
+Take a detour off the direct path to find items that give you an edge, but
+beware the powerful special enemies that grow more frequent as you near the
+exit; left untended, their abilities will quickly spell your doom.
+
+Features:
+
+* 25+ upgradeable perks to augment and focus your strategy
+* 150+ items to collect and boost your stats
+* 100+ special enemies to encounter and overcome
+* 80+ one-off events for a temporary boost
+* Unlock more enemies, events, and cosmetics across playthroughs
