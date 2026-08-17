@@ -2,13 +2,12 @@
 
 ![App Logo](app/src/main/assets/320x320iconRounded.png)
 # I Keep Having This Dream
-TODO add f-droid badge once app gets approved
-<!-- [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
+[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
       alt='Get it on F-Droid'
-      height="80">](https://f-droid.org/packages/com.fireflame.dream) -->
-<!-- [<img src="https://raw.githubusercontent.com/deckerst/common/main/assets/get-it-on-github.png"
+      height="80">](https://f-droid.org/packages/com.fireflame.dream)
+[<img src="https://raw.githubusercontent.com/deckerst/common/main/assets/get-it-on-github.png"
       alt='Get it on GitHub'
-      height="80">](https://github.com/FuzionCD/dream-game-android/releases/latest) -->
+      height="80">](https://github.com/FuzionCD/dream-game-android/releases/latest)
 
 #### **I Keep Having This Dream** is a strategy-roguelike game for Android.
 
@@ -46,9 +45,8 @@ Place tiles to boost your attack and defence, defeat enemies to level up your ch
 
 # Building from Source
 
-IKHTD is written in C++ with a thin Java/SDL2 shell. It builds entirely from source: its only dependencies, SDL2, SDL2_mixer, and OpenAL-soft, are linked as submodules and compiled by CMake, so nothing is fetched from the network at build time.
-
-The app targets `arm64-v8a` only, and supports Android 5.0 (API 21) and up.
+IKHTD is written in C++ with a thin Java/SDL2 shell. The app targets `arm64-v8a` only, and supports Android 5.0 (API 21) and up.
+**TODO:** support other architectures (armeabi-v7a, x86_64) at some point. If you want to give me a kick in the pants, open an issue asking for this.
 
 ## Requirements
 
