@@ -96,7 +96,7 @@ inline const std::vector<std::vector<std::string>>& table() {
         {"Sometimes I know", "I'll soon forget all of this,", "so I just stop worrying"},  // 79
         {"Sometimes I am the void,", "and I consume everything", "but create nothing"},  // 80
         {"Sometimes the hallway keeps", "getting longer behind me,", "and I daren't turn around"},  // 81
-        {"Sometimes I'm following tracks", "in the snow ahead of me,", "and never catch who left them"},  // 82
+        {"Sometimes I'm following tracks", "in the snow ahead of me,", "but never catch who left them"},  // 82
         {"Sometimes I'm wearing your face,", "and no one knows the difference,", "least of all me"},  // 83
         {"Sometimes my reflection runs away,", "and I have to hurry", "to catch up to myself"},  // 84
         {"Sometimes the stairs only", "ever lead back to the stairs,", "and still I keep climbing"},  // 85
