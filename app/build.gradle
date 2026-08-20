@@ -12,8 +12,9 @@ android {
         versionName "1.0.0"
 
         ndk {
-            // arm64 only
-            abiFilters 'arm64-v8a'
+            // arm64-v8a   every 64-bit phone from ~2015 on, the bulk of installs
+            // armeabi-v7a 32-bit ARM, for pre-2015 and budget devices still on API 21+
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
         }
 
         externalNativeBuild {

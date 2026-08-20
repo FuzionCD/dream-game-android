@@ -7,6 +7,13 @@ add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.")
 add_compile_options("-ffile-prefix-map=${ANDROID_NDK}=/ndk")
 add_link_options("-Wl,--build-id=none")
 
+# 16 KB page alignment, required (by Google) for arm64 devices on Android 15+.
+# 32-bit ARM always uses 4 KB pages, so the padding stays off there.
+# This isn't going on Google Play, but I figured it wouldn't hurt.
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    add_link_options("-Wl,-z,max-page-size=16384")
+endif()
+
 # sdl2
 add_subdirectory(SDL2)
 
