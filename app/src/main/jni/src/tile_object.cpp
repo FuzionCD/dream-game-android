@@ -363,8 +363,7 @@ void TileObject::update(float dt) {
 
 // reconstructed from Ghidra FUN_1000133b0
 int TileObject::getContentType() {
-    if (content && /* visible byte at MovableActor */
-        *((uint8_t*)content + 8) != 0) {
+    if (content && content->visible) {
         return content->type;
     }
 
@@ -401,8 +400,7 @@ bool TileObject::isContentScaleAnimating() const {
 // reconstructed from Ghidra FUN_1000133f0
 int TileObject::getSnagType() {
 
-    if (snagContent &&
-        *((uint8_t*)snagContent + 8) != 0) {
+    if (snagContent && snagContent->visible) {
         return snagContent->type;
     }
 
@@ -479,8 +477,7 @@ SnagContent* TileObject::getSnagIfAlive() {
         return nullptr;
     }
 
-    // visible byte at MovableActor
-    if (*((uint8_t*)snagContent + 8) == 0) {
+    if (!snagContent->visible) {
         return nullptr;
     }
 

@@ -16,12 +16,6 @@ struct MoveTarget {
     MoveTarget(float x, float y) : posX(x), posY(y) {}
 };
 
-// reconstructed from Ghidra:
-//   ctor:           FUN_100038b18 (called by PlayerSystem, TileContent,
-//                    SnagContent, and any other "movable actor" subclass)
-//   update vtable:  FUN_100038bac (the 4-stage state-machine update)
-//   draw vtable[2]: FUN_100038b88 (early-out if hidden+faded, else draw Quad)
-//
 // MovableActor is the shared 0x134-byte base class for the game's animatable
 // entities: anything that has a Quad sprite, lives at a position, can spawn
 // in / move along a path / fade / scale-out, and tracks its own movement
@@ -57,10 +51,6 @@ struct MoveTarget {
 //   [10] 0x10007af90, pointer into __DATA, possibly RTTI.
 //   [11] 0x10007b0e0, same shape, possibly type-name string.
 //
-// when porting a future vfunc, decompile the address above + add it as a
-// real method. for the squish on tile consume the vtable[6] hook is the
-// pivotal one; its absence is why placed tiles vanish without a fade.
-//
 // Subclasses use MovableActor in two ways:
 //   1. inherit publicly for non-trivial subclasses (PlayerSystem, TileContent,
 //      SnagContent) so they get the layout and the initBase() helper.
@@ -68,8 +58,8 @@ struct MoveTarget {
 //      for now).
 //
 // Shared base layout:
-// vtable                (8 bytes)
-// visible               (1 byte) + 7 bytes pad
+// vtable                (pointer-sized: 8 bytes on arm64, 4 on armeabi-v7a)
+// visible               (1 byte) + pad to the following field's alignment
 // baseQuad              (0xD8 bytes, the rendered sprite; the
 //                                   trailing 0x10 holds the Quad's animation
 //                                   target rect, see quad.h)
@@ -176,10 +166,9 @@ public:
     virtual void onFade(float fadeT)        { (void)fadeT; }
     virtual void onScaleOut(float scaleOutT) { (void)scaleOutT; }
 
-    // ---- byte-exact base class layout ----
-    // implicit C++ vtable pointer occupies the first 8 bytes (the binary's
-    // vtable slot). visible follows it; the rest of the layout
-    // matches the binary byte-for-byte.
+    // ---- base class layout ----
+    // the implicit vtable pointer sits ahead of these fields and is pointer-
+    // sized. don't use litteral offsets to get to these fields.
     bool visible;
     Quad baseQuad;                 // (0xD8, owns its anim rect)
     int gridCol;                   // (cached from parent at initBase, re-synced at commit)
