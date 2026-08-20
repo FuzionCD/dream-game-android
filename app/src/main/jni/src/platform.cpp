@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "renderer.h"
 #include <SDL.h>
 #include <GLES/gl.h>
 
@@ -66,7 +67,7 @@ GLuint Platform::loadTexture(const char* filename, int* outW, int* outH) {
 
     GLuint tex = 0;
     glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
+    Renderer::bindTextureName(tex);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);

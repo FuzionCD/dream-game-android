@@ -76,12 +76,10 @@ int main(int argc, char* argv[]) {
 
     // --- splash logo, drawn before the heavy asset load so the logo (not a
     //     black screen) covers it. the logo is loaded + faded in, then its
-    //     texture is deleted so loadTextures() gets the game's expected GL ids
-    //     (1..13, bound by literal id); the rendered frame stays on screen
-    //     (it lives in the framebuffer, not the texture), so the logo holds
-    //     through the whole load. when load finishes the main loop's first
-    //     frame clears to black and the title fades in over it: a clean cut,
-    //     no splash fade-out (the title already fades itself in).
+    //     texture is released to give the atlas load its memory back; the
+    //     rendered frame stays on screen (it lives in the framebuffer), so the
+    //     logo lasts through the whole load. when load finishes the main loop's
+    //     first frame fades to black and the title fades in over it cleanly.
     //     width-relative on black: width 0.814, centered at (0.5, 0.46).
     int splashW = 0, splashH = 0;
     GLuint splashTex = Platform::loadTexture("logo-1250.png", &splashW, &splashH);
@@ -104,7 +102,7 @@ int main(int argc, char* argv[]) {
         alpha = (alpha < 0.0f) ? 0.0f : (alpha > 1.0f ? 1.0f : alpha);
         splashLogo.setColor(255, 255, 255, (uint8_t)(alpha * 255.0f));
         Renderer::beginFrame();
-        bindTexture(splashTex);
+        Renderer::bindTextureName(splashTex);
         splashLogo.draw();
         SDL_GL_SwapWindow(window);
     };
@@ -135,8 +133,13 @@ int main(int argc, char* argv[]) {
 
     if (haveSplash) {
         fadeInSplashLogo();
-        drawSplashLogo(1.0f);             // hold full opacity through the load
-        glDeleteTextures(1, &splashTex);  // free GL id 1 for the game textures
+        drawSplashLogo(1.0f);  // hold full opacity through the load
+
+        // the frame is rasterized, so we don't need to keep the texture bound.
+        // unbound first since GL drops the binding of a deleted texture back to 0,
+        // and the bind cache has to match that.
+        Renderer::bindTextureName(0);
+        glDeleteTextures(1, &splashTex);
     }
 
     if (!game->loadTextures()) {

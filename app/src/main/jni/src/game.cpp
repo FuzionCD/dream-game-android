@@ -404,10 +404,17 @@ void Game::destroy() {
         }
     }
 
+    Renderer::resetTextureSlots();
+
     SDL_free(this);
 }
 
 bool Game::loadTextures() {
+
+    static_assert(GAME_NUM_TEXTURES == NUM_TEXTURE_SLOTS,
+                  "texture slot count must match the renderer's slot registry");
+
+    Renderer::resetTextureSlots();
 
     for (int i = 0; i < GAME_NUM_TEXTURES; i++) {
         int w, h;
@@ -418,7 +425,11 @@ bool Game::loadTextures() {
             return false;
         }
 
-        SDL_Log("Texture %d (GL id %u): %s (%dx%d)", i + 1, textures[i], sTextureFiles[i], w, h);
+        // draw code addresses atlases by 1-based slot, so publish the GL name
+        // the driver actually used for this one.
+        Renderer::setTextureSlot((GLuint)(i + 1), textures[i]);
+
+        SDL_Log("Texture slot %d (GL name %u): %s (%dx%d)", i + 1, textures[i], sTextureFiles[i], w, h);
     }
 
     return true;

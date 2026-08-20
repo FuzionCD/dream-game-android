@@ -4,22 +4,52 @@
 #include <GLES/gl.h>
 #include <SDL.h>
 
-// FUN_10005734c, bindTexture.
-//
-// global texture-binding cache. callers pass a texture index; this wraps
-// glBindTexture with a short-circuit so back-to-back binds of the same
-// texture skip the GL state change. lives in renderer.cpp (not game.cpp)
-// because it's a pure GL helper with no Game-state coupling.
+// global texture-binding cache. wraps glBindTexture with a guard so
+// back-to-back binds of the same texture skip the GL state change.
 static GLuint sCurrentTexture = 0xFFFFFFFF;
 
-void bindTexture(GLuint textureId) {
+// GL names for each atlas slot, indexed by slot number. slot 0 is the
+// untextured binding and stays 0. Game::loadTextures fills in 1..13 with
+// whatever names glGenTextures returned for each atlas.
+static GLuint sTextureSlots[NUM_TEXTURE_SLOTS + 1] = { 0 };
 
-    if (sCurrentTexture == textureId) {
+void Renderer::bindTextureName(GLuint glName) {
+
+    if (sCurrentTexture == glName) {
         return;
     }
 
-    sCurrentTexture = textureId;
-    glBindTexture(GL_TEXTURE_2D, textureId);
+    sCurrentTexture = glName;
+    glBindTexture(GL_TEXTURE_2D, glName);
+}
+
+void Renderer::setTextureSlot(GLuint textureSlot, GLuint glName) {
+
+    if (textureSlot == 0 || textureSlot > NUM_TEXTURE_SLOTS) {
+        SDL_Log("setTextureSlot: slot %u out of range", textureSlot);
+        return;
+    }
+
+    sTextureSlots[textureSlot] = glName;
+}
+
+void Renderer::resetTextureSlots() {
+
+    for (int i = 0; i <= NUM_TEXTURE_SLOTS; i++) {
+        sTextureSlots[i] = 0;
+    }
+
+    sCurrentTexture = 0xFFFFFFFF;
+}
+
+void bindTexture(GLuint textureSlot) {
+
+    if (textureSlot > NUM_TEXTURE_SLOTS) {
+        SDL_Log("bindTexture: slot %u out of range", textureSlot);
+        return;
+    }
+
+    Renderer::bindTextureName(sTextureSlots[textureSlot]);
 }
 
 static int sScreenW = 0;

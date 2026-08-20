@@ -5,13 +5,33 @@
 // handles opengl es 1.x setup and per-frame state.
 // reconstructed from FUN_100044764 (viewport/projection setup).
 
-// FUN_10005734c. set the active GL_TEXTURE_2D binding, with a cached-id
-// short-circuit so back-to-back binds of the same texture skip the GL call.
+// number of atlas texture slots the draw code addresses, matching
+// GAME_NUM_TEXTURES. slots are numbered 1..NUM_TEXTURE_SLOTS; slot 0 means
+// "untextured".
+#define NUM_TEXTURE_SLOTS 13
+
+// set the active GL_TEXTURE_2D binding from an atlas slot, with a cached-id
+// early return so back-to-back binds of the same texture skip the GL call.
 // kept as a free function (not Renderer::) so the ~20 callsites in draw
 // code stay terse.
-void bindTexture(GLuint textureId);
+//
+// the slot is resolved to a GL texture name through the registry that
+// Game::loadTextures fills in, since glGenTextures picks names at its own
+// discretion and they differ between drivers.
+void bindTexture(GLuint textureSlot);
 
 namespace Renderer {
+    // record the GL name glGenTextures handed out for an atlas slot.
+    // called once per atlas by Game::loadTextures.
+    void setTextureSlot(GLuint textureSlot, GLuint glName);
+
+    // bind a GL texture name directly, for textures held outside the atlas
+    // registry (the startup splash). keeps the bind cache coherent.
+    void bindTextureName(GLuint glName);
+
+    // clear every registered slot and invalidate the bind cache.
+    void resetTextureSlots();
+
     // FUN_100044764: sets up viewport, projection, blend mode, clears.
     // the game uses a virtual coordinate system:
     //   X: -scaleFactor to scaleFactor + 1.0  (typically 0 to 1 with no letterboxing)
