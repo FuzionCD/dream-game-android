@@ -12,7 +12,6 @@
 #### **I Keep Having This Dream** is a strategy-roguelike game for Android.
 
 <div align="left">
-Alex, if you see this: send me a message.
 
 # Description
 
