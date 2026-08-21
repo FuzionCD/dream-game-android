@@ -44,8 +44,7 @@ Place tiles to boost your attack and defence, defeat enemies to level up your ch
 
 # Building from Source
 
-IKHTD is written in C++ with a thin Java/SDL2 shell. The app targets `arm64-v8a` only, and supports Android 5.0 (API 21) and up.
-**TODO:** support other architectures (armeabi-v7a, x86_64) at some point. If you want to give me a kick in the pants, open an issue asking for this.
+IKHTD is written in C++ with a thin Java/SDL2 shell. The app builds for both `arm64-v8a` and `armeabi-v7a`, and supports Android 5.0 (API 21) and up.
 
 ## Requirements
 
