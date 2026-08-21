@@ -17,6 +17,10 @@
 // sdl requires this signature for the entry point
 int main(int argc, char* argv[]) {
 
+    // this stops SDL from eating back button presses and closing the game,
+    // and lets back events be delegated to our custom handler in game.cpp instead.
+    SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS) < 0) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
         return 1;

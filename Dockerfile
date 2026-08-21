@@ -27,7 +27,7 @@ ENV PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-to
 RUN yes | sdkmanager --licenses >/dev/null \
       && sdkmanager \
           "platform-tools" \
-          "platforms;android-35" \
+          "platforms;android-36" \
           "build-tools;36.0.0" \
           "ndk;27.2.12479018" \
           "cmake;3.22.1"
