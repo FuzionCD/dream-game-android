@@ -1,6 +1,6 @@
 <div align="center">
 
-![App Logo](app/src/main/assets/320x320iconRounded.png)
+![App Logo](meta/icons/320x320iconRounded.png)
 # I Keep Having This Dream
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
       alt='Get it on F-Droid'
