@@ -145,7 +145,7 @@ public:
     void setAlpha(uint8_t a) override;
 
     // vtable[5] override. fires when the player taps + releases over the
-    // confirm button while readyByte is set. latches readyToCommit = 1,
+    // confirm button while showConfirm is set. latches readyToCommit = 1,
     // signaling gameBoardUpdate to drain the picks and close the panel.
     void onConfirmTapped() override;
 
@@ -153,7 +153,7 @@ public:
     //
     // Menu base class owns the panel chrome: vtable +
     // visible, anchorX/Y, fade state, bgDim Quad, frame9slice Label,
-    // titleQuad Quad, closeBg Quad, confirmButton Quad, readyByte,
+    // titleQuad Quad, closeBg Quad, confirmButton Quad, showConfirm,
     // confirmPressed. see menu.h for full layout.
 
     // ---- stat slots ----

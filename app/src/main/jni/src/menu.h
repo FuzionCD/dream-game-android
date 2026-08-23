@@ -24,7 +24,7 @@
 //   - setAlpha(a)              vtable[4]. subclass fades its content; base
 //                                impl fades the chrome.
 //   - onConfirmTapped()        vtable[5]. fires when player taps + releases
-//                                over the confirm button while readyByte set.
+//                                over the confirm button while showConfirm set.
 
 // scalar pixel-snap helper (binary FUN_100057374). matches Quad::snapToPixelGrid's
 // grid (round to nearest 1/640). exposed to Menu subclasses for content layout
@@ -43,7 +43,7 @@ public:
     // FUN_100057878. base chrome draw; subclasses call this then draw their
     // own slot content. binds tex 0 for bgDim, then under a glPushMatrix
     // translated by (anchorX, anchorY), draws frame9slice + titleQuad + (when
-    // readyByte is set) closeBg + confirmButton.
+    // showConfirm is set) closeBg + confirmButton.
     void draw();
 
     // FUN_1000578f8. shared per-frame logic: drives the cosine-eased fade
@@ -73,13 +73,13 @@ public:
     // off-center placement, call setSize + setAnchorY directly.
     void setSizeAndCenterY(float panelWidth, float panelHeight);
 
-    // FUN_100057ac8. visible flag set, fade timer reset, readyByte cleared,
+    // FUN_100057ac8. visible flag set, fade timer reset, showConfirm cleared,
     // confirmButton restored to full white, sound 8 fires.
     void panelShow();
 
     // FUN_100057b1c. `justClearVisible` mirrors the binary's two-arg variants:
     //   true  -> just clear visible (used for the deferred-close animation tail)
-    //   false -> full close (clear secondaryVisible + animTimer0 + readyByte,
+    //   false -> full close (clear secondaryVisible + animTimer0 + showConfirm,
     //                        play sound 8).
     void panelHide(bool justClearVisible);
 
@@ -125,14 +125,14 @@ public:
     Quad         titleQuad;
 
     // closeBg Quad, round backdrop behind confirmButton. drawn only
-    // when readyByte is set.
+    // when showConfirm is set.
     Quad         closeBg;
 
     // confirmButton Quad. hit-tested by baseUpdate against
-    // touch coords when readyByte is set.
+    // touch coords when showConfirm is set.
     Quad         confirmButton;
 
-    bool         readyByte;        // =1 once subclass enables commit;
+    bool         showConfirm;      // =1 once subclass enables commit;
                                    //         confirm button accepts taps.
                                    //         also gates closeBg + confirm draw.
     bool         confirmPressed;   // =1 while touch is held over

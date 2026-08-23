@@ -150,12 +150,12 @@ void Menu::setSizeAndCenterY(float panelWidth, float panelHeight) {
 //
 // opens the panel: shows it, rewinds the fade timer, clears the tap-commit
 // state, whitens confirmButton, and plays sound 8 (panel open whoosh).
-// readyByte + confirmPressed are one ushort write.
+// showConfirm + confirmPressed are one ushort write.
 void Menu::panelShow() {
     visible          = true;
     secondaryVisible = true;
     animTimer0       = 0.0f;
-    readyByte        = false;
+    showConfirm        = false;
     confirmPressed   = false;
     confirmButton.setColor(0xFF, 0xFF, 0xFF, 0xFF);
 
@@ -180,10 +180,10 @@ void Menu::panelHide(bool justClearVisible) {
 
     secondaryVisible = false;
     animTimer0       = 0.0f;
-    readyByte        = false;
+    showConfirm        = false;
     // confirmPressed deliberately not cleared here; binary writes
-    // one byte (readyByte) only. matters when a tap is in flight at close time;
-    // subsequent baseUpdate gates on readyByte first so the stale
+    // one byte (showConfirm) only. matters when a tap is in flight at close time;
+    // subsequent baseUpdate gates on showConfirm first so the stale
     // confirmPressed is harmless until next panelShow rewinds it.
 
     Game* g = getGame();
@@ -203,7 +203,7 @@ void Menu::panelHide(bool justClearVisible) {
 //   1. bind tex 0, draw bgDim (under a no-matrix-push context).
 //   2. push matrix, translate by (anchorX, anchorY), bind tex 9.
 //   3. draw frame9slice + titleQuad.
-//   4. if readyByte: draw closeBg + confirmButton.
+//   4. if showConfirm: draw closeBg + confirmButton.
 //   5. pop matrix.
 void Menu::draw() {
 
@@ -220,7 +220,7 @@ void Menu::draw() {
     frame9slice.draw();
     titleQuad.draw();
 
-    if (readyByte) {
+    if (showConfirm) {
         closeBg.draw();
         confirmButton.draw();
     }
@@ -255,7 +255,7 @@ void Menu::setAlpha(uint8_t a) {
 //   ease       = 0.5 - cos(easeT * PI) * 0.5      (smoothstep)
 //   alpha      = ease * 255
 //
-// once fully open (animTimer0 >= 1.0) and readyByte set by the subclass, the
+// once fully open (animTimer0 >= 1.0) and showConfirm set by the subclass, the
 // same function handles the confirm-button tap state via Quad::contains.
 // the alpha each frame is pushed via virtual setAlpha so subclass also
 // fades its content.
@@ -270,7 +270,7 @@ void Menu::baseUpdate(float dt) {
 
     if (animTimer0 >= 1.0f) {
         // fully visible: process confirm-button tap state
-        if (!readyByte) {
+        if (!showConfirm) {
             return;   // subclass hasn't enabled commit yet
         }
 

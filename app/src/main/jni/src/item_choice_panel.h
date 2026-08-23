@@ -136,7 +136,7 @@ public:
     //
     // Menu base class owns the panel chrome: vtable +
     // visible, anchorX/Y, fade state, bgDim Quad, frame9slice Label,
-    // titleQuad Quad, closeBg Quad, confirmButton Quad, readyByte,
+    // titleQuad Quad, closeBg Quad, confirmButton Quad, showConfirm,
     // confirmPressed. see menu.h for full layout.
 
     // pointer back to GameBoard::detailPanel (= the tile-inspect / Item-card

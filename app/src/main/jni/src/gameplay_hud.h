@@ -100,17 +100,17 @@ public:
     void tickDeathHeart(float dt);
 
     // configure the conditionalIcon for one of three states.
-    // anchors to largeButtonFrame's posX/Y plus a small Y nudge
+    // anchors to discardButtonFrame's posX/Y plus a small Y nudge
     // (HUD_COND_Y_NUDGE = -0.003125f) in all states. ports of:
     //   FUN_10000bab8 (Default)        discard button idle.
-    //   FUN_10000d300 (StagingActive)  discard mode active, no tiles selected.
-    //   FUN_10000d250 (ConfirmDiscard) at least one tile staged for commit.
-    enum class ConditionalIconState {
+    //   FUN_10000d300 (NoTileSelected) discard mode active, no tiles selected.
+    //   FUN_10000d250 (ConfirmDiscard) at least one tile selected for discard.
+    enum class DiscardIconState {
         Default,
-        StagingActive,
+        NoTileSelected,
         ConfirmDiscard,
     };
-    void setConditionalIcon(ConditionalIconState state);
+    void setDiscardIcon(DiscardIconState state);
     void clearEventSlots();                        // FUN_10000d778
 
     // FUN_10000d010 / FUN_10000d034, advance the xp / control marker
@@ -231,25 +231,25 @@ public:
     //                      1 = user icon (top-left, paired with playerIcon)
     //                      2 = hamburger / settings menu (top-right, paired
     //                          with menuIcon)
-    //                      3 = largeButtonFrame = the discard button (paired
+    //                      3 = discardButtonFrame = the discard button (paired
     //                          with conditionalIcon; shown only when
-    //                          conditionalFlag is set, i.e. a rack tile can be
+    //                          showDiscardButton is set, i.e. a rack tile can be
     //                          discarded)
     //                      written on touch-down hit, restored to 0 on release.
-    //   publishedState   = engagementState when the release lands on the same
+    //   pressedButtonId   = engagementState when the release lands on the same
     //                      header. read by GameBoard::update to dispatch the click.
     int32_t engagementState;
-    int32_t publishedState;
+    int32_t pressedButtonId;
 
     // 6 button-frame and icon TileIcons
-    TileIcon buttonFrame1;
-    TileIcon buttonFrame2;
-    TileIcon largeButtonFrame;
+    TileIcon statsButtonFrame;
+    TileIcon pauseButtonFrame;
+    TileIcon discardButtonFrame;
     TileIcon playerIcon;
     TileIcon menuIcon;
     TileIcon conditionalIcon;         // (UV/pos set by FUN_10000bab8)
 
-    bool conditionalFlag;             // (gates conditionalIcon + largeButtonFrame draw)
+    bool showDiscardButton;             // (gates conditionalIcon + discardButtonFrame draw)
 
     // health values driving both the center HP number and the 4 health-bar
     // quads. setHealth (FUN_10000d18c) updates currentHealth and rebuilds

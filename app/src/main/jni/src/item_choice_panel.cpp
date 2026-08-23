@@ -743,7 +743,7 @@ void ItemChoicePanel::open(PlayerSystem* playerSystem) {
 //   4. on tap (inputState == 1): for each slot 0..slotCount-1, hit-test
 //      the candidateLabel first; on hit, unselect any prior pick, play
 //      sound 7 (re-tap same slot) or sound 5 (new slot), latch selection,
-//      set the Menu base's readyByte (= confirm button enabled). then
+//      set the Menu base's showConfirm (= confirm button enabled). then
 //      hit-test the heldLabel and heldDividerQuad; on either hit, pop up
 //      DetailPanel showing the held item card.
 //   5. on release (inputState == 0): tear down the detail panel via
@@ -785,7 +785,7 @@ void ItemChoicePanel::update(float dt, float touchInput) {
 
                 lastSelectedSlot = i;
                 setSlotSelected(i, true);
-                readyByte = 1;
+                showConfirm = 1;
                 return;
             }
 

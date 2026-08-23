@@ -276,7 +276,7 @@ void EventChoicePanel::update(float dt, float touchInput) {
 
                 selectedSlot = i;
                 setSlotSelected(i, true);
-                readyByte = 1;
+                showConfirm = 1;
                 return;
             }
         }
@@ -421,7 +421,7 @@ void rollCandidates(EventChoicePanel& panel,
 // line; DAT constants extracted from __DATA at runtime via parse_macho.
 void EventChoicePanel::open(PlayerSystem& ps,
                             const std::vector<EventSlot*>& sourceEvents) {
-    // chrome show: visible=1, animTimer0=0, readyByte cleared, sound 8.
+    // chrome show: visible=1, animTimer0=0, showConfirm cleared, sound 8.
     panelShow();
 
     Game* g = getGame();

@@ -23,7 +23,7 @@ class PlayerSystem;
 //
 // UserStatsPanel lives at GameBoard.userStatsPanel (0xEB0 bytes total). it's the
 // in-game read-only "your stats" overlay opened when the player taps the
-// top-left HUD button (buttonFrame1 / publishedState == 1).
+// top-left HUD button (statsButtonFrame / pressedButtonId == 1).
 //
 // despite the visible/posX/posY prefix matching DialogPanel exactly, this
 // is not a Menu subclass and does not share a base class with the other
@@ -85,7 +85,7 @@ public:
     // bottom-stats text from `worldStatsBlock` (= GameBoard.totalTurnCount, the
     // World/Level/Items counter triple), prime the fade-in timer, play
     // sound 8 (menuAppear). called from GameBoard::dispatchHexAndRackTouch
-    // when HUD publishedState becomes 1.
+    // when HUD pressedButtonId becomes 1.
     void open(PlayerSystem& playerSystem, const int* worldStatsBlock);
 
     // FUN_10000a594. per-frame tick. while the fade-in is mid-progress

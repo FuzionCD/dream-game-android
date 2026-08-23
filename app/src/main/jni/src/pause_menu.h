@@ -38,7 +38,7 @@
 //             the player confirms (button 0), exitRequest fires and the run
 //             closes via the ScorePanel path.
 //
-// triggered by HUD publishedState == 2 (player tapped the menu icon on
+// triggered by HUD pressedButtonId == 2 (player tapped the menu icon on
 // the gameplay HUD). FUN_10001ae10's case-2 branch calls
 //   FUN_10002f688(GameBoard.seVolume, GameBoard.bgmVolume, &pauseMenu, GameBoard.tutorialFlag)
 // which Menu::panelShow + seeds the two slider values from current

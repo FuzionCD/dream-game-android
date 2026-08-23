@@ -750,7 +750,7 @@ public:
     void pushDiscardStagingEntry(int slotIdx);
 
     // refreshDiscardButtonAvailability, FUN_100017b44. recomputes
-    // hud.conditionalFlag based on whether the discard button should be
+    // hud.showDiscardButton based on whether the discard button should be
     // showing this frame (any rack tile passes canDiscardRackTile and the
     // game isn't in a blocking state).
     void refreshDiscardButtonAvailability();
@@ -1262,7 +1262,7 @@ public:
 
     // user-stats overlay (the read-only panel opened by tapping the
     // top-left HUD player-icon button). ctor FUN_100009a00, open FUN_10000a9f4,
-    // update FUN_10000a594, draw FUN_10000a3dc. publishedState == 1 frpm
+    // update FUN_10000a594, draw FUN_10000a3dc. pressedButtonId == 1 frpm
     // HUD's queryReleaseTouch routes to userStatsPanel.open(playerSystem, &worldIndex).
     UserStatsPanel userStatsPanel;
 

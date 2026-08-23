@@ -600,7 +600,7 @@ GameBoard* GameBoard::create() {
     // UserStatsPanel ctor (FUN_100009a00). lays out the backdrop, the
     // 9-slice header, the 3 stat rows (ATK / HP / DEF) and the bottom
     // World/Level/Items strip. opens later via FUN_10000a9f4 when the
-    // HUD's top-left player-icon button is tapped (publishedState == 1).
+    // HUD's top-left player-icon button is tapped (pressedButtonId == 1).
     pBoard->userStatsPanel.init(&pBoard->detailPanel);
 
     // PauseMenu ctor (FUN_10002e838). sets up Menu chrome, 3 tabs, 2 info
@@ -1278,7 +1278,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
     if (dialogPanel.hintShown[0x0c] == 0 &&
         !hud.pendingDiscards.empty() && hud.selectedEvent == nullptr) {
         fireHint(0x0c, VGAP_PANEL,
-                 hud.largeButtonFrame.quad.posX, hud.largeButtonFrame.quad.posY);
+                 hud.discardButtonFrame.quad.posX, hud.discardButtonFrame.quad.posY);
         return;
     }
 
@@ -1306,7 +1306,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
     if (dialogPanel.hintShown[0x0f] == 0 &&
         userStatsPanel.visible && userStatsPanel.fadeTimer >= 1.0f) {
         fireHint(0x0f, VGAP_PANEL,
-                 hud.buttonFrame1.quad.posX, hud.buttonFrame1.quad.posY);
+                 hud.statsButtonFrame.quad.posX, hud.statsButtonFrame.quad.posY);
         return;
     }
 
@@ -1314,7 +1314,7 @@ void GameBoard::tickAmbientPickupHinting(float dt, float touchInput) {
     if (dialogPanel.hintShown[0x10] == 0 &&
         pauseMenu.visible && pauseMenu.animTimer0 >= 1.0f) {
         fireHint(0x10, VGAP_PANEL,
-                 hud.buttonFrame2.quad.posX, hud.buttonFrame2.quad.posY);
+                 hud.pauseButtonFrame.quad.posX, hud.pauseButtonFrame.quad.posY);
         return;
     }
 
@@ -2616,7 +2616,7 @@ bool GameBoard::dispatchHexAndRackTouch(float dt, float touchInput) {
     }
 
     // game-internal sub-screen touch state
-    int  s = hud.publishedState;
+    int  s = hud.pressedButtonId;
 
     if (s == 1) {
         // HUD top-left player-icon tapped -> open the user-stats panel.
@@ -2697,7 +2697,7 @@ bool GameBoard::dispatchHexAndRackTouch(float dt, float touchInput) {
 
     // case 3: discard-button tap. empty queue -> enter staging mode.
     if (hud.pendingDiscards.empty()) {
-        hud.setConditionalIcon(GameplayHUD::ConditionalIconState::StagingActive);
+        hud.setDiscardIcon(GameplayHUD::DiscardIconState::NoTileSelected);
         hud.selectedEvent = nullptr;
 
         SnagContent* tantrum = findSnagInRack(0x75);
@@ -2821,7 +2821,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
                 }
             }
             hud.pendingDiscards.clear();
-            hud.setConditionalIcon(GameplayHUD::ConditionalIconState::Default);
+            hud.setDiscardIcon(GameplayHUD::DiscardIconState::Default);
         }
 
         if (!hud.pendingDiscards.empty()) {
@@ -2856,7 +2856,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
                 // generic abandon path (any non-StrongMedicine / non-
                 // ABriefPause selected kind, including all batch-1 cases).
                 hud.pendingDiscards.clear();
-                hud.setConditionalIcon(GameplayHUD::ConditionalIconState::Default);
+                hud.setDiscardIcon(GameplayHUD::DiscardIconState::Default);
                 hud.selectedEvent = nullptr;
 
                 if (sameEventTapped) {
@@ -2887,7 +2887,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
             if (!prologueAbandonedAndContinues) {
                 hud.pendingDiscards.clear();
-                hud.setConditionalIcon(GameplayHUD::ConditionalIconState::Default);
+                hud.setDiscardIcon(GameplayHUD::DiscardIconState::Default);
                 hud.selectedEvent = nullptr;
 
                 if (committed || sameEventTapped) {
@@ -4645,7 +4645,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 // FUN_10001ae10 tail starting at the `*plVar1 != *plVar2` branch.
 // see game_board.h for the high-level contract.
 void GameBoard::commitPendingDiscards() {
-    hud.setConditionalIcon(GameplayHUD::ConditionalIconState::Default);
+    hud.setDiscardIcon(GameplayHUD::DiscardIconState::Default);
 
     // pass 1: assemble involved rack tiles into a local list, used by the
     // achievement batch-discard fan-out below.
@@ -4930,7 +4930,7 @@ void GameBoard::pushDiscardStagingEntry(int slotIdx) {
     e.staged    = 0;
 }
 
-// reconstructed from Ghidra FUN_100017b44. sets hud.conditionalFlag (=
+// reconstructed from Ghidra FUN_100017b44. sets hud.showDiscardButton (=
 // "show the discard button this frame") when the game is in a state that
 // can discard at least one rack tile.
 void GameBoard::refreshDiscardButtonAvailability() {
@@ -4960,7 +4960,7 @@ void GameBoard::refreshDiscardButtonAvailability() {
         }
     }
 
-    hud.conditionalFlag = show;
+    hud.showDiscardButton = show;
 }
 
 // reconstructed from Ghidra FUN_100025d2c. flips the staged byte and
@@ -5066,7 +5066,7 @@ void GameBoard::refreshDiscardConfirmIcon() {
     if (anyStaged) {
         hud.setConditionalIcon(GameplayHUD::ConditionalIconState::ConfirmDiscard);
     } else {
-        hud.setConditionalIcon(GameplayHUD::ConditionalIconState::StagingActive);
+        hud.setDiscardIcon(GameplayHUD::DiscardIconState::NoTileSelected);
     }
 }
 
@@ -11252,7 +11252,7 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
     // return without writing the new state.
     int newState = state;  // default: stay in current state
     bool writeNewState = false;
-    bool jumpTo7Plus_8414 = false;  // = "LAB_10001958c" path: state-9-style direct commit
+    bool triggerNemesis = false;  // = "LAB_10001958c" path: state-9-style direct commit
     bool jumpTo7AfterCommit = false;  // = "LAB_100019594" path: state-7
 
     switch (state) {
@@ -11276,7 +11276,7 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
 
         // post-input transition logic.
         if (nemesis.eatTarget > 0) {
-            jumpTo7Plus_8414 = true;
+            triggerNemesis = true;
             break;
         }
 
@@ -11373,7 +11373,7 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
         armNemesisInterlockOnSpecialTiles();
 
         if (nemesis.eatTarget > 0) {
-            jumpTo7Plus_8414 = true;
+            triggerNemesis = true;
             break;
         }
 
@@ -11395,8 +11395,9 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
             break;  // still resolving staged discards -> stay in 6
         }
 
+
         if (nemesis.eatTarget > 0) {
-            jumpTo7Plus_8414 = true;
+            triggerNemesis = true;
             break;
         }
 
@@ -11618,7 +11619,7 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
         // settled: prime nemesis.eatTarget = pageList.size(), fall through to
         // the FUN_10001c1a4 commit-tile path (= LAB_10001958c).
         nemesis.eatTarget = static_cast<int>(pageList.size());
-        jumpTo7Plus_8414 = true;
+        triggerNemesis = true;
         break;
     }
 
@@ -11680,9 +11681,7 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
         break;
     }
 
-    // LAB_10001958c: jump-7-plus-8414 path. fires when interlock counter
-    // > 0 in any case that set it.
-    if (jumpTo7Plus_8414) {
+    if (triggerNemesis) {
         // FUN_10001c1a4 = nemesisSpawnAtTrailTail. binary's LAB_10001958c
         // packs 0x3f800000 (= 1.0f) into the second-arg vector regs.
         nemesisSpawnAtTrailTail();
@@ -12833,13 +12832,13 @@ void GameBoard::initLevelContent() {
 
     // 7.28 finalize display state (port of FUN_100017b44).
     // the binary checks several conditions and writes 0 or 1 to
-    // GameplayHUD::conditionalFlag. with pageCount == 0 the outer
+    // GameplayHUD::showDiscardButton. with pageCount == 0 the outer
     // condition fails, so the flag clears to 0.
-    hud.conditionalFlag = false;
+    hud.showDiscardButton = false;
 
     // 7.29 HUD post-tile positioning (port of FUN_10000bab8). configures
     // the conditionalIcon with its standard UV / size / pos.
-    hud.setConditionalIcon(GameplayHUD::ConditionalIconState::Default);
+    hud.setDiscardIcon(GameplayHUD::DiscardIconState::Default);
 
     // 7.30 X-button refresh (port of FUN_100017c04). resets visible / pressed
     // flags, restores quad tint, then on a non-empty page list scans for a
@@ -14470,6 +14469,6 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
     // HUD conditional-icon re-anchor (FUN_10000bab8), X-button refresh
     // (FUN_100017c04).
     refreshDiscardButtonAvailability();
-    hud.setConditionalIcon(GameplayHUD::ConditionalIconState::Default);
+    hud.setDiscardIcon(GameplayHUD::DiscardIconState::Default);
     tryShowXButton();
 }

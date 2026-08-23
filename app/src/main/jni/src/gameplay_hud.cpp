@@ -140,8 +140,8 @@ static void layoutStatBars(GameplayHUD* h) {
                                 + h->healthBarTip.quad.height * 0.5f;
 }
 
-// FUN_10000bab8 / d300 / d250 are consolidated into setConditionalIcon
-// below, parameterised by ConditionalIconState. all three are equivalent
+// FUN_10000bab8 / d300 / d250 are consolidated into setDiscardIcon
+// below, parameterised by DiscardIconState. all three are equivalent
 // up to UV/size constants.
 
 // reconstructed from Ghidra FUN_10000b160
@@ -157,18 +157,18 @@ void GameplayHUD::init(void* parentPtr) {
     healthBarTip      = TileIcon();
 
     engagementState = 0;
-    publishedState  = 0;
+    pressedButtonId  = 0;
 
     // 6 button-frame and icon quads
-    buttonFrame1     = TileIcon();
-    buttonFrame2     = TileIcon();
-    largeButtonFrame = TileIcon();
+    statsButtonFrame     = TileIcon();
+    pauseButtonFrame     = TileIcon();
+    discardButtonFrame = TileIcon();
     playerIcon       = TileIcon();
     menuIcon         = TileIcon();
     conditionalIcon  = TileIcon();
 
     // post-icon scalar block
-    conditionalFlag = false;
+    showDiscardButton = false;
     currentHealth = 1;
     maxHealth = 1;
     previousHealthRatio = 0.0f;
@@ -243,46 +243,46 @@ void GameplayHUD::init(void* parentPtr) {
 
     // button frame 1: UV (0, 0.194) -> (0.073, 0.260), size 0.117x0.105.
     // posX/posY = width/2, height/2 = (0.0586, 0.0523), top-left corner.
-    buttonFrame1.quad.setTexCoords(0.0f, 0.19433594f, 0.07324219f, 0.25976563f);
-    buttonFrame1.quad.setSize(0.1171875f, 0.1046875f);
-    buttonFrame1.quad.posX = buttonFrame1.quad.width  * 0.5f;
-    buttonFrame1.quad.posY = buttonFrame1.quad.height * 0.5f;
+    statsButtonFrame.quad.setTexCoords(0.0f, 0.19433594f, 0.07324219f, 0.25976563f);
+    statsButtonFrame.quad.setSize(0.1171875f, 0.1046875f);
+    statsButtonFrame.quad.posX = statsButtonFrame.quad.width * 0.5f;
+    statsButtonFrame.quad.posY = statsButtonFrame.quad.height * 0.5f;
 
     // button frame 2: same UV. posX = width/2 + HUD_BUTTON_X_RIGHT.
     // posY = height/2. final position (0.943, 0.0523), top-right corner.
-    buttonFrame2.quad.setTexCoords(0.0f, 0.19433594f, 0.07324219f, 0.25976563f);
-    buttonFrame2.quad.setSize(0.1171875f, 0.1046875f);
-    buttonFrame2.quad.posX = buttonFrame2.quad.width  * 0.5f + HUD_BUTTON_X_RIGHT;
-    buttonFrame2.quad.posY = buttonFrame2.quad.height * 0.5f;
+    pauseButtonFrame.quad.setTexCoords(0.0f, 0.19433594f, 0.07324219f, 0.25976563f);
+    pauseButtonFrame.quad.setSize(0.1171875f, 0.1046875f);
+    pauseButtonFrame.quad.posX = pauseButtonFrame.quad.width * 0.5f + HUD_BUTTON_X_RIGHT;
+    pauseButtonFrame.quad.posY = pauseButtonFrame.quad.height * 0.5f;
 
     // large button frame: UV (0, 0.265) -> (0.128, 0.342), size 0.205x0.123.
     // hardcoded posX/posY = 0.8961, 0.176.
-    largeButtonFrame.quad.setTexCoords(0.0f, 0.26464844f, 0.12792969f, 0.34179688f);
-    largeButtonFrame.quad.setSize(0.2046875f, 0.1234375f);
-    largeButtonFrame.quad.posX = 0.89624023f;
-    largeButtonFrame.quad.posY = 0.17578125f;
+    discardButtonFrame.quad.setTexCoords(0.0f, 0.26464844f, 0.12792969f, 0.34179688f);
+    discardButtonFrame.quad.setSize(0.2046875f, 0.1234375f);
+    discardButtonFrame.quad.posX = 0.89624023f;
+    discardButtonFrame.quad.posY = 0.17578125f;
 
-    // FUN_10000bab8: position conditional icon now that largeButtonFrame is in place
-    setConditionalIcon(ConditionalIconState::Default);
+    // FUN_10000bab8: position conditional icon now that discardButtonFrame is in place
+    setDiscardIcon(DiscardIconState::Default);
 
     // player icon: UV (0.068, 0.710) -> (0.117, 0.753), size 0.078x0.069.
-    // posX = buttonFrame1.posX + HUD_ICON_NUDGE.
-    // posY = buttonFrame1.height [read from buttonFrame1.quad.height] (binary
-    //        reads buttonFrame1.quad.posY).
+    // posX = statsButtonFrame.posX + HUD_ICON_NUDGE.
+    // posY = statsButtonFrame.height [read from statsButtonFrame.quad.height] (binary
+    //        reads statsButtonFrame.quad.posY).
     playerIcon.quad.setTexCoords(0.068359375f, 0.70996094f, 0.1171875f, 0.7529297f);
     playerIcon.quad.setSize(0.078125f, 0.06875f);
-    playerIcon.quad.posX = buttonFrame1.quad.posX + HUD_ICON_NUDGE;
-    playerIcon.quad.posY = buttonFrame1.quad.posY;
+    playerIcon.quad.posX = statsButtonFrame.quad.posX + HUD_ICON_NUDGE;
+    playerIcon.quad.posY = statsButtonFrame.quad.posY;
 
     // FUN_1000573a8: pixel-snap player icon
     playerIcon.quad.snapToPixelGrid();
 
     // menu icon: UV (0.118, 0.712) -> (0.165, 0.753), size 0.075x0.066.
-    // posX = buttonFrame2.posX + HUD_ICON_NUDGE; posY = buttonFrame2.posY + HUD_ICON_NUDGE.
+    // posX = pauseButtonFrame.posX + HUD_ICON_NUDGE; posY = pauseButtonFrame.posY + HUD_ICON_NUDGE.
     menuIcon.quad.setTexCoords(0.11816406f, 0.71191406f, 0.16503906f, 0.7529297f);
     menuIcon.quad.setSize(0.075f, 0.065625f);
-    menuIcon.quad.posX = buttonFrame2.quad.posX + HUD_ICON_NUDGE;
-    menuIcon.quad.posY = buttonFrame2.quad.posY + HUD_ICON_NUDGE;
+    menuIcon.quad.posX = pauseButtonFrame.quad.posX + HUD_ICON_NUDGE;
+    menuIcon.quad.posY = pauseButtonFrame.quad.posY + HUD_ICON_NUDGE;
 
     {
         constexpr float SNAP_REF = 640.0f;
@@ -381,14 +381,14 @@ void GameplayHUD::draw() {
     healthBarOverflow.quad.draw();      // (drawn behind fill)
     healthBarFill.quad.draw();          // (covers gain/overflow base)
     healthBarTip.quad.draw();           // (2px cap on top)
-    buttonFrame1.quad.draw();
+    statsButtonFrame.quad.draw();
     playerIcon.quad.draw();
-    buttonFrame2.quad.draw();
+    pauseButtonFrame.quad.draw();
     menuIcon.quad.draw();
 
-    // conditional pair (gated by conditionalFlag)
-    if (conditionalFlag) {
-        largeButtonFrame.quad.draw();
+    // conditional pair (gated by showDiscardButton)
+    if (showDiscardButton) {
+        discardButtonFrame.quad.draw();
         conditionalIcon.quad.draw();
     }
 
@@ -1104,7 +1104,7 @@ void GameplayHUD::restoreFromSnapshot(int playerAttack, int playerDefence,
                                       const std::vector<int64_t>& eventTraySnapshot) {
     // ---- touch / engagement + marker-bank-full state reset ----
     engagementState   = 0;
-    publishedState    = 0;
+    pressedButtonId    = 0;
     statTintSwapT     = 1.0f;
     levelUpReady      = 0;
     itemChoiceReady   = 0;
@@ -1243,21 +1243,21 @@ void GameplayHUD::clearEventSlots() {
 // merges three near-identical binary functions (FUN_10000bab8 /
 // FUN_10000d300 / FUN_10000d250); they only differ in UV/size, and all
 // share the same Y nudge + snap.
-void GameplayHUD::setConditionalIcon(ConditionalIconState state) {
+void GameplayHUD::setDiscardIcon(DiscardIconState state) {
     float u0, v0, u1, v1, w, h;
 
     switch (state) {
-        case ConditionalIconState::Default:
+        case DiscardIconState::Default:
             u0 = 0.16601563f; v0 = 0.69140625f;
             u1 = 0.22070313f; v1 = 0.75292969f;
             w  = 0.0875f;     h  = 0.09843750f;
             break;
-        case ConditionalIconState::StagingActive:
+        case DiscardIconState::NoTileSelected:
             u0 = 0.22167969f; v0 = 0.69335938f;
             u1 = 0.28125000f; v1 = 0.75292969f;
             w  = 0.0953125f;  h  = 0.0953125f;
             break;
-        case ConditionalIconState::ConfirmDiscard:
+        case DiscardIconState::ConfirmDiscard:
             u0 = 0.28222656f; v0 = 0.69531250f;
             u1 = 0.34863281f; v1 = 0.75292969f;   // u1 binary 0x3eb28000
             w  = 0.10625f;    h  = 0.09218750f;
@@ -1267,9 +1267,9 @@ void GameplayHUD::setConditionalIcon(ConditionalIconState state) {
     conditionalIcon.quad.setTexCoords(u0, v0, u1, v1);
     conditionalIcon.quad.setSize(w, h);
 
-    // anchor to largeButtonFrame's pos (binary reads its Quad's posX/posY).
-    conditionalIcon.quad.posX = largeButtonFrame.quad.posX;
-    conditionalIcon.quad.posY = largeButtonFrame.quad.posY + HUD_COND_Y_NUDGE;
+    // anchor to discardButtonFrame's pos (binary reads its Quad's posX/posY).
+    conditionalIcon.quad.posX = discardButtonFrame.quad.posX;
+    conditionalIcon.quad.posY = discardButtonFrame.quad.posY + HUD_COND_Y_NUDGE;
 
     conditionalIcon.quad.snapToPixelGrid();
 }
@@ -1557,10 +1557,10 @@ void GameplayHUD::clearXPBank() {
 // the touch landed on); any other state takes the "release" branch
 // (confirm or cancel).
 //
-// hit-test priority order: buttonFrame1 -> buttonFrame2 -> optional
-// largeButtonFrame (gated by conditionalFlag) -> 4 EventSlots.
+// hit-test priority order: statsButtonFrame -> pauseButtonFrame -> optional
+// discardButtonFrame (gated by showDiscardButton) -> 4 EventSlots.
 int GameplayHUD::queryReleaseTouch() {
-    publishedState   = 0;
+    pressedButtonId   = 0;
     releasedEventSlot = nullptr;
 
     Game* g = getGame();
@@ -1589,7 +1589,7 @@ int GameplayHUD::queryReleaseTouch() {
         // header-zone gate: header hit-tests only fire when touchY is in
         // the top of the screen. binary reads Game.touchY_ (= touchY in our
         // typed Game) and compares to DAT_100059d30 = 0x3df00000 (= 75/640).
-        // taps below that virtual-Y fall through to the largeButtonFrame +
+        // taps below that virtual-Y fall through to the discardButtonFrame +
         // EventSlot tests.
         constexpr float HEADER_ZONE_BOTTOM = 75.0f / 640.0f;  // DAT_100059d30 = 0x3df00000
         float touchYNorm = g->touchY();
@@ -1598,25 +1598,25 @@ int GameplayHUD::queryReleaseTouch() {
         if (touchYNorm < HEADER_ZONE_BOTTOM) {
             // header hit-tests (priority order):
             //
-            // 1. buttonFrame1 paired with playerIcon.
-            if (buttonFrame1.quad.contains(touchXY[0], touchXY[1])) {
+            // 1. statsButtonFrame paired with playerIcon.
+            if (statsButtonFrame.quad.contains(touchXY[0], touchXY[1])) {
                 engagementState = 1;
-                quadSetColorBytes(&buttonFrame1.quad, 0xFFB4B4B4u);
+                quadSetColorBytes(&statsButtonFrame.quad, 0xFFB4B4B4u);
                 quadSetColorBytes(&playerIcon.quad,   0xFFB4B4B4u);
                 g->soundQueue.trigger(5);
                 SDL_Log("DEBUG queryReleaseTouch: engagement state=1 "
-                        "(buttonFrame1, paired playerIcon)");
+                        "(statsButtonFrame, paired playerIcon)");
                 return 1;
             }
 
-            // 2. buttonFrame2 paired with menuIcon.
-            if (buttonFrame2.quad.contains(touchXY[0], touchXY[1])) {
+            // 2. pauseButtonFrame paired with menuIcon.
+            if (pauseButtonFrame.quad.contains(touchXY[0], touchXY[1])) {
                 engagementState = 2;
-                quadSetColorBytes(&buttonFrame2.quad, 0xFFB4B4B4u);
+                quadSetColorBytes(&pauseButtonFrame.quad, 0xFFB4B4B4u);
                 quadSetColorBytes(&menuIcon.quad,     0xFFB4B4B4u);
                 g->soundQueue.trigger(5);
                 SDL_Log("DEBUG queryReleaseTouch: engagement state=2 "
-                        "(buttonFrame2, paired menuIcon)");
+                        "(pauseButtonFrame, paired menuIcon)");
                 return 1;
             }
 
@@ -1625,15 +1625,15 @@ int GameplayHUD::queryReleaseTouch() {
             return 1;
         }
 
-        // 3. largeButtonFrame, gated by conditionalFlag.
-        if (conditionalFlag) {
-            if (largeButtonFrame.quad.contains(touchXY[0], touchXY[1])) {
+        // 3. discardButtonFrame, gated by showDiscardButton.
+        if (showDiscardButton) {
+            if (discardButtonFrame.quad.contains(touchXY[0], touchXY[1])) {
                 engagementState = 3;
-                quadSetColorBytes(&largeButtonFrame.quad, 0xFFB4B4B4u);
+                quadSetColorBytes(&discardButtonFrame.quad, 0xFFB4B4B4u);
                 quadSetColorBytes(&conditionalIcon.quad,  0xFFB4B4B4u);
                 g->soundQueue.trigger(5);
                 SDL_Log("DEBUG queryReleaseTouch: engagement state=3 "
-                        "(largeButtonFrame, paired conditionalIcon)");
+                        "(discardButtonFrame, paired conditionalIcon)");
                 return 1;
             }
         }
@@ -1696,12 +1696,12 @@ int GameplayHUD::queryReleaseTouch() {
         }
 
         case 1: {
-            bool hit = buttonFrame1.quad.contains(touchXY[0], touchXY[1]);
-            quadSetColorBytes(&buttonFrame1.quad, 0xFFFFFFFFu);
+            bool hit = statsButtonFrame.quad.contains(touchXY[0], touchXY[1]);
+            quadSetColorBytes(&statsButtonFrame.quad, 0xFFFFFFFFu);
             quadSetColorBytes(&playerIcon.quad,   0xFFFFFFFFu);
 
             if (hit) {
-                publishedState = engagementState;
+                pressedButtonId = engagementState;
                 g->soundQueue.trigger(6);
             } else {
                 g->soundQueue.trigger(7);
@@ -1712,12 +1712,12 @@ int GameplayHUD::queryReleaseTouch() {
         }
 
         case 2: {
-            bool hit = buttonFrame2.quad.contains(touchXY[0], touchXY[1]);
-            quadSetColorBytes(&buttonFrame2.quad, 0xFFFFFFFFu);
+            bool hit = pauseButtonFrame.quad.contains(touchXY[0], touchXY[1]);
+            quadSetColorBytes(&pauseButtonFrame.quad, 0xFFFFFFFFu);
             quadSetColorBytes(&menuIcon.quad,     0xFFFFFFFFu);
 
             if (hit) {
-                publishedState = engagementState;
+                pressedButtonId = engagementState;
                 g->soundQueue.trigger(6);
             } else {
                 g->soundQueue.trigger(7);
@@ -1728,12 +1728,12 @@ int GameplayHUD::queryReleaseTouch() {
         }
 
         case 3: {
-            bool hit = largeButtonFrame.quad.contains(touchXY[0], touchXY[1]);
-            quadSetColorBytes(&largeButtonFrame.quad, 0xFFFFFFFFu);
+            bool hit = discardButtonFrame.quad.contains(touchXY[0], touchXY[1]);
+            quadSetColorBytes(&discardButtonFrame.quad, 0xFFFFFFFFu);
             quadSetColorBytes(&conditionalIcon.quad,  0xFFFFFFFFu);
 
             if (hit) {
-                publishedState = engagementState;
+                pressedButtonId = engagementState;
                 g->soundQueue.trigger(6);
             } else {
                 g->soundQueue.trigger(7);

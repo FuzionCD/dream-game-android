@@ -721,7 +721,7 @@ void LevelUpPanel::onConfirmTapped() {
 //          the oldest pick (the front of the picks list).
 //   10. push_back the new pick on picksList.
 //   11. setSlotSelected(newPick, true).
-//   12. if picksList.size() > 1: readyByte = 1 (confirm enabled).
+//   12. if picksList.size() > 1: showConfirm = 1 (confirm enabled).
 //   13. drainList.assign(picksList): mirror.
 //
 // stat and perk slot labels are both populated with their 9-slice chrome
@@ -810,7 +810,7 @@ void LevelUpPanel::update(float dt, float touchInput) {
 
     // step 12: enable the confirm button once we have at least 2 picks.
     if (picksList.size() > 1) {
-        readyByte = true;
+        showConfirm = true;
     }
 
     // step 13: mirror picksList into drainList for the commit drain.
@@ -827,7 +827,7 @@ void LevelUpPanel::update(float dt, float touchInput) {
 //      - glPushMatrix + glTranslatef(anchorX, anchorY, 0).
 //      - bindTexture(9), frame9slice.draw() (= Label::draw on the 9-slice),
 //        titleQuad.draw().
-//      - if (readyByte): closeBg.draw() + confirmButton.draw().
+//      - if (showConfirm): closeBg.draw() + confirmButton.draw().
 //      - glPopMatrix.
 //
 //   phase B: per-slot rendering. binary opens a NEW glPushMatrix +
