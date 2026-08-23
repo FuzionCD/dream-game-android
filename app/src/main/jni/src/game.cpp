@@ -165,8 +165,8 @@ static const float sSoundGains[NUM_SOUND_SLOTS] = {
     0.1f,   //  2 titleButtonCancel
     0.05f,  //  3 wipeOn
     0.05f,  //  4 wipeOff
-    0.2f,   //  5 buttonDown
-    0.2f,   //  6 buttonUp
+    0.35f,  //  5 buttonDown
+    0.35f,  //  6 buttonUp
     0.5f,   //  7 buttonCancel
     1.0f,   //  8 menuAppear
     0.1f,   //  9 menuEventsAppear
