@@ -5049,22 +5049,25 @@ void GameBoard::unstageDiscardEntryVisual(DiscardEntry& entry) {
     }
 }
 
-// reconstructed from Ghidra FUN_100025d48. scan pendingDiscards; if any
-// entry is staged for commit, switch the conditional icon to confirm,
-// else back to staging-active.
-void GameBoard::refreshDiscardConfirmIcon() {
-    bool anyStaged = false;
+// true when at least one rack tile is marked to be discarded.
+static bool anyDiscardStaged(const std::vector<DiscardEntry>& queue) {
 
-    for (const DiscardEntry& e : hud.pendingDiscards) {
+    for (const DiscardEntry& e : queue) {
 
         if (e.staged != 0) {
-            anyStaged = true;
-            break;
+            return true;
         }
     }
 
-    if (anyStaged) {
-        hud.setConditionalIcon(GameplayHUD::ConditionalIconState::ConfirmDiscard);
+    return false;
+}
+
+// scan pendingDiscards; if any tile is staged for discard, switch the
+// conditional icon to confirm, otherwise set it to cancel.
+void GameBoard::refreshDiscardConfirmIcon() {
+
+    if (anyDiscardStaged(hud.pendingDiscards)) {
+        hud.setDiscardIcon(GameplayHUD::DiscardIconState::ConfirmDiscard);
     } else {
         hud.setDiscardIcon(GameplayHUD::DiscardIconState::NoTileSelected);
     }
@@ -11384,6 +11387,9 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
 
     case 6: {
         // hex-pickup commit. player has tapped a placed tile.
+
+        // check discard queue before it's emptied
+        bool nothingStaged = !anyDiscardStaged(hud.pendingDiscards);
         bool dispatched = dispatchHexAndRackTouch(dt, touchInput);
 
         if (!dispatched) {
@@ -11395,6 +11401,14 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
             break;  // still resolving staged discards -> stay in 6
         }
 
+        // don't process end of turn stuff like snag movement and nemesis eating
+        // tiles if the player didn't actually discard anything (relevant to both
+        // the discard button and certain events)
+        if (nothingStaged) {
+            newState = 1;
+            writeNewState = true;
+            break;
+        }
 
         if (nemesis.eatTarget > 0) {
             triggerNemesis = true;
