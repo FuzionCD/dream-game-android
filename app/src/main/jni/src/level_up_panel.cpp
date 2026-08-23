@@ -24,7 +24,7 @@
 //   phase 1: panel base ctor FUN_100057424(this, 641, 906, 251, 48) +
 //            vtable override to PTR_thunk_FUN_10002cbbc_100074540. the base
 //            ctor sets up bgDim, frame9slice, titleQuad, closeBg, and the
-//            confirmButton Quad.
+//            rotateArrow Quad.
 //
 //   phase 2: per-stat-slot sub-object init loop (3 x 0x2E8 stride).
 //            init the slot's TileContent icon (lightweight, no setType yet),
@@ -62,7 +62,7 @@ void LevelUpPanel::init() {
     // binary calls Menu::ctor(this, 0x281, 0x38a, 0xfb, 0x30) =
     // (titleAtlasX=641, titleAtlasY=906, titleAtlasW=251, titleAtlasH=48).
     // sets up bgDim, frame9slice (9-slice chrome), titleQuad UV/size,
-    // closeBg + confirmButton.
+    // closeBg + rotateArrow.
     Menu::init(0x281, 0x38a, 0xfb, 0x30);
 
     // ---- phase 2: per-stat-slot sub-object inits ----
@@ -97,7 +97,7 @@ void LevelUpPanel::init() {
     // ---- phase 4: Menu base setSize + setAnchorY ----
     //
     // Menu::setSize sizes frame9slice + positions titleQuad/closeBg/
-    // confirmButton (with the shared DAT_10005a740/744/748 offsets) +
+    // rotateArrow (with the shared DAT_10005a740/744/748 offsets) +
     // writes anchorX. Menu::setAnchorY just snap-writes anchorY.
     //
     // binary hardcodes DAT_10005a0a4 = 0.294 for anchorY, calibrated for
@@ -827,7 +827,7 @@ void LevelUpPanel::update(float dt, float touchInput) {
 //      - glPushMatrix + glTranslatef(anchorX, anchorY, 0).
 //      - bindTexture(9), frame9slice.draw() (= Label::draw on the 9-slice),
 //        titleQuad.draw().
-//      - if (showConfirm): closeBg.draw() + confirmButton.draw().
+//      - if (showConfirm): closeBg.draw() + rotateArrow.draw().
 //      - glPopMatrix.
 //
 //   phase B: per-slot rendering. binary opens a NEW glPushMatrix +

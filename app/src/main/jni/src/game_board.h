@@ -579,7 +579,7 @@ public:
     // kind == 0 may pass based on a column-parity / Item-driven rule.
     bool controlTileCellPredicate(int col, int row) const;
 
-    // FUN_100024678, control-tile range overlay. clears gameplayItems
+    // FUN_100024678, control-tile range overlay. clears controlSpots
     // live count, then walks a 9x9 hex neighborhood around the newest
     // page tile (or origin when empty); per cell, if controlTileCellPredicate
     // passes and hex distance from anchor < 5, allocates / reuses a
@@ -631,7 +631,7 @@ public:
     // state machine on touch-down + touch-up: pick up a rack tile, snap it
     // back if released over itself, or directionally commit if released on
     // a hex target. resets selectedRackSlot / draggedRackSlot /
-    // gameplayItemsLiveCount / exitArrowVisible, the back/nav button alphas.
+    // shownControlSpotsCount / exitArrowVisible, the back/nav button alphas.
     // with nothing in progress, most branches early-out.
     void onPointerReleasedDuringDrag();
 
@@ -1021,8 +1021,8 @@ public:
 
     // these three are all TileIcons (0xD8) per the binary, not bare Quads.
     // gaps between offsets confirmed: 0x7C8 - 0x6F0 = 0xD8, 0x8A0 - 0x7C8 = 0xD8.
-    TileIcon navArrowQuad;   // (UV: 0.083,0.0 to 0.181,0.098, size 0.156x0.156)
-    TileIcon backButtonQuad; // (UV: 0.0,0.0 to 0.082,0.193, size 0.131x0.309)
+    TileIcon confirmButton;   // (UV: 0.083,0.0 to 0.181,0.098, size 0.156x0.156)
+    TileIcon rotateArrow; // (UV: 0.0,0.0 to 0.082,0.193, size 0.131x0.309)
     // the "X" / dead-end escape button. tryShowXButton (FUN_100017c04)
     // scans the 6 directions from the newest committed tile for a hex that
     // is reachable and has all 6 of its own neighbors blocked, i.e.
@@ -1137,8 +1137,8 @@ public:
     // FUN_100018514 step that fires before the page-list head tile. binary
     // tracks an explicit live count (= visible items, may be < vector
     // capacity), separate from the std::vector's own size.
-    std::vector<TileIcon> gameplayItems;     // (24 bytes, std::vector head)
-    int64_t               gameplayItemsLiveCount;
+    std::vector<TileIcon> controlSpots;     // (24 bytes, std::vector head)
+    int64_t               shownControlSpotsCount;
 
     // tile reserve queue: std::list of TileReserveEntry. populateRack pops
     // one entry per call from the front (= oldest) to fill a rack slot. if

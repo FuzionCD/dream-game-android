@@ -17,7 +17,7 @@ float snapMenuPixel(float v) {
 // FUN_100057424, Menu::init.
 //
 // shared chrome ctor. populates the 4 chrome Quads (bgDim, titleQuad, closeBg,
-// confirmButton) + 1 Label (frame9slice) inside the Menu header. titleQuad's
+// rotateArrow) + 1 Label (frame9slice) inside the Menu header. titleQuad's
 // UV/size come from the caller-supplied atlas-pixel rect; other Quads use
 // fixed UVs.
 void Menu::init(int titleAtlasX, int titleAtlasY, int titleAtlasW, int titleAtlasH) {
@@ -84,12 +84,12 @@ void Menu::init(int titleAtlasX, int titleAtlasY, int titleAtlasW, int titleAtla
         titleQuad.setSize(px_w * PIXEL_TO_SCREEN, px_h * PIXEL_TO_SCREEN);
     }
 
-    // closeBg: round backdrop behind confirmButton. UV+size from inline
+    // closeBg: round backdrop behind rotateArrow. UV+size from inline
     // literals in FUN_100057424 (shared across all Menu subclasses).
     closeBg.setTexCoords(0.180664f, 0.577148f, 0.292969f, 0.690430f);
     closeBg.setSize(0.179688f, 0.18125f);
 
-    // confirmButton: the close/OK icon Quad. shared UV+size.
+    // rotateArrow: the close/OK icon Quad. shared UV+size.
     confirmButton.setTexCoords(0.409180f, 0.065430f, 0.475586f, 0.132812f);
     confirmButton.setSize(0.10625f, 0.107813f);
 }
@@ -98,7 +98,7 @@ void Menu::init(int titleAtlasX, int titleAtlasY, int titleAtlasW, int titleAtla
 //
 // resize frame9slice + reposition the 3 chrome quads against the new (w, h)
 // rect. then write anchorX. titleQuad goes horizontally centered;
-// closeBg + confirmButton land at the bottom-right with fixed offsets.
+// closeBg + rotateArrow land at the bottom-right with fixed offsets.
 void Menu::setSize(float panelWidth, float panelHeight) {
     // shared button offset constants (live in __TEXT.__const next to the
     // Menu code, so they're shared across all subclasses).
@@ -115,7 +115,7 @@ void Menu::setSize(float panelWidth, float panelHeight) {
     titleQuad.posY = TITLE_QUAD_POS_Y;
     titleQuad.snapToPixelGrid();
 
-    // closeBg + confirmButton: bottom-right corner with fixed offsets.
+    // closeBg + rotateArrow: bottom-right corner with fixed offsets.
     closeBg.posX = panelWidth  + CLOSE_BG_OFFSET;
     closeBg.posY = panelHeight + CLOSE_BG_OFFSET;
     closeBg.snapToPixelGrid();
@@ -149,7 +149,7 @@ void Menu::setSizeAndCenterY(float panelWidth, float panelHeight) {
 // FUN_100057ac8, Menu::panelShow.
 //
 // opens the panel: shows it, rewinds the fade timer, clears the tap-commit
-// state, whitens confirmButton, and plays sound 8 (panel open whoosh).
+// state, whitens rotateArrow, and plays sound 8 (panel open whoosh).
 // showConfirm + confirmPressed are one ushort write.
 void Menu::panelShow() {
     visible          = true;
@@ -203,7 +203,7 @@ void Menu::panelHide(bool justClearVisible) {
 //   1. bind tex 0, draw bgDim (under a no-matrix-push context).
 //   2. push matrix, translate by (anchorX, anchorY), bind tex 9.
 //   3. draw frame9slice + titleQuad.
-//   4. if showConfirm: draw closeBg + confirmButton.
+//   4. if showConfirm: draw closeBg + rotateArrow.
 //   5. pop matrix.
 void Menu::draw() {
 
@@ -233,7 +233,7 @@ void Menu::draw() {
 // fades the chrome: bgDim gets half alpha so the backdrop only ever reaches
 // ~50% opacity at full fade-in (matching the artist intent; the gameplay
 // world should still be partially visible through the panel). frame9slice
-// and titleQuad get full alpha. confirmButton + closeBg are not touched
+// and titleQuad get full alpha. rotateArrow + closeBg are not touched
 // here; they're tinted by panelShow/baseUpdate's state machine.
 void Menu::setAlpha(uint8_t a) {
     bgDim.setAlpha(static_cast<uint8_t>(a >> 1));

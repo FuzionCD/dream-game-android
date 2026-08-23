@@ -160,12 +160,12 @@ void GameplayHUD::init(void* parentPtr) {
     pressedButtonId  = 0;
 
     // 6 button-frame and icon quads
-    statsButtonFrame     = TileIcon();
-    pauseButtonFrame     = TileIcon();
+    statsButtonFrame   = TileIcon();
+    pauseButtonFrame   = TileIcon();
     discardButtonFrame = TileIcon();
-    playerIcon       = TileIcon();
-    menuIcon         = TileIcon();
-    conditionalIcon  = TileIcon();
+    statsIcon          = TileIcon();
+    menuIcon           = TileIcon();
+    discardIcon        = TileIcon();
 
     // post-icon scalar block
     showDiscardButton = false;
@@ -269,13 +269,13 @@ void GameplayHUD::init(void* parentPtr) {
     // posX = statsButtonFrame.posX + HUD_ICON_NUDGE.
     // posY = statsButtonFrame.height [read from statsButtonFrame.quad.height] (binary
     //        reads statsButtonFrame.quad.posY).
-    playerIcon.quad.setTexCoords(0.068359375f, 0.70996094f, 0.1171875f, 0.7529297f);
-    playerIcon.quad.setSize(0.078125f, 0.06875f);
-    playerIcon.quad.posX = statsButtonFrame.quad.posX + HUD_ICON_NUDGE;
-    playerIcon.quad.posY = statsButtonFrame.quad.posY;
+    statsIcon.quad.setTexCoords(0.068359375f, 0.70996094f, 0.1171875f, 0.7529297f);
+    statsIcon.quad.setSize(0.078125f, 0.06875f);
+    statsIcon.quad.posX = statsButtonFrame.quad.posX + HUD_ICON_NUDGE;
+    statsIcon.quad.posY = statsButtonFrame.quad.posY;
 
     // FUN_1000573a8: pixel-snap player icon
-    playerIcon.quad.snapToPixelGrid();
+    statsIcon.quad.snapToPixelGrid();
 
     // menu icon: UV (0.118, 0.712) -> (0.165, 0.753), size 0.075x0.066.
     // posX = pauseButtonFrame.posX + HUD_ICON_NUDGE; posY = pauseButtonFrame.posY + HUD_ICON_NUDGE.
@@ -382,14 +382,14 @@ void GameplayHUD::draw() {
     healthBarFill.quad.draw();          // (covers gain/overflow base)
     healthBarTip.quad.draw();           // (2px cap on top)
     statsButtonFrame.quad.draw();
-    playerIcon.quad.draw();
+    statsIcon.quad.draw();
     pauseButtonFrame.quad.draw();
     menuIcon.quad.draw();
 
     // conditional pair (gated by showDiscardButton)
     if (showDiscardButton) {
         discardButtonFrame.quad.draw();
-        conditionalIcon.quad.draw();
+        discardIcon.quad.draw();
     }
 
     // -- pass 4: control markers (count from controlCount) --
@@ -1264,14 +1264,14 @@ void GameplayHUD::setDiscardIcon(DiscardIconState state) {
             break;
     }
 
-    conditionalIcon.quad.setTexCoords(u0, v0, u1, v1);
-    conditionalIcon.quad.setSize(w, h);
+    discardIcon.quad.setTexCoords(u0, v0, u1, v1);
+    discardIcon.quad.setSize(w, h);
 
     // anchor to discardButtonFrame's pos (binary reads its Quad's posX/posY).
-    conditionalIcon.quad.posX = discardButtonFrame.quad.posX;
-    conditionalIcon.quad.posY = discardButtonFrame.quad.posY + HUD_COND_Y_NUDGE;
+    discardIcon.quad.posX = discardButtonFrame.quad.posX;
+    discardIcon.quad.posY = discardButtonFrame.quad.posY + HUD_COND_Y_NUDGE;
 
-    conditionalIcon.quad.snapToPixelGrid();
+    discardIcon.quad.snapToPixelGrid();
 }
 
 // =================================================================
@@ -1598,14 +1598,14 @@ int GameplayHUD::queryReleaseTouch() {
         if (touchYNorm < HEADER_ZONE_BOTTOM) {
             // header hit-tests (priority order):
             //
-            // 1. statsButtonFrame paired with playerIcon.
+            // 1. statsButtonFrame paired with statsIcon.
             if (statsButtonFrame.quad.contains(touchXY[0], touchXY[1])) {
                 engagementState = 1;
                 quadSetColorBytes(&statsButtonFrame.quad, 0xFFB4B4B4u);
-                quadSetColorBytes(&playerIcon.quad,   0xFFB4B4B4u);
+                quadSetColorBytes(&statsIcon.quad, 0xFFB4B4B4u);
                 g->soundQueue.trigger(5);
                 SDL_Log("DEBUG queryReleaseTouch: engagement state=1 "
-                        "(statsButtonFrame, paired playerIcon)");
+                        "(statsButtonFrame, paired statsIcon)");
                 return 1;
             }
 
@@ -1630,10 +1630,10 @@ int GameplayHUD::queryReleaseTouch() {
             if (discardButtonFrame.quad.contains(touchXY[0], touchXY[1])) {
                 engagementState = 3;
                 quadSetColorBytes(&discardButtonFrame.quad, 0xFFB4B4B4u);
-                quadSetColorBytes(&conditionalIcon.quad,  0xFFB4B4B4u);
+                quadSetColorBytes(&discardIcon.quad, 0xFFB4B4B4u);
                 g->soundQueue.trigger(5);
                 SDL_Log("DEBUG queryReleaseTouch: engagement state=3 "
-                        "(discardButtonFrame, paired conditionalIcon)");
+                        "(discardButtonFrame, paired discardIcon)");
                 return 1;
             }
         }
@@ -1698,7 +1698,7 @@ int GameplayHUD::queryReleaseTouch() {
         case 1: {
             bool hit = statsButtonFrame.quad.contains(touchXY[0], touchXY[1]);
             quadSetColorBytes(&statsButtonFrame.quad, 0xFFFFFFFFu);
-            quadSetColorBytes(&playerIcon.quad,   0xFFFFFFFFu);
+            quadSetColorBytes(&statsIcon.quad, 0xFFFFFFFFu);
 
             if (hit) {
                 pressedButtonId = engagementState;
@@ -1730,7 +1730,7 @@ int GameplayHUD::queryReleaseTouch() {
         case 3: {
             bool hit = discardButtonFrame.quad.contains(touchXY[0], touchXY[1]);
             quadSetColorBytes(&discardButtonFrame.quad, 0xFFFFFFFFu);
-            quadSetColorBytes(&conditionalIcon.quad,  0xFFFFFFFFu);
+            quadSetColorBytes(&discardIcon.quad, 0xFFFFFFFFu);
 
             if (hit) {
                 pressedButtonId = engagementState;

@@ -99,7 +99,7 @@ public:
     // burst) and fires sound 0x34 once per beat.
     void tickDeathHeart(float dt);
 
-    // configure the conditionalIcon for one of three states.
+    // configure the discardIcon for one of three states.
     // anchors to discardButtonFrame's posX/Y plus a small Y nudge
     // (HUD_COND_Y_NUDGE = -0.003125f) in all states. ports of:
     //   FUN_10000bab8 (Default)        discard button idle.
@@ -228,11 +228,11 @@ public:
     //   engagementState  = which header the touch is currently captured on
     //                      (verified on device by tapping each):
     //                      0 = none / EventSlot
-    //                      1 = user icon (top-left, paired with playerIcon)
+    //                      1 = user icon (top-left, paired with statsIcon)
     //                      2 = hamburger / settings menu (top-right, paired
     //                          with menuIcon)
     //                      3 = discardButtonFrame = the discard button (paired
-    //                          with conditionalIcon; shown only when
+    //                          with discardIcon; shown only when
     //                          showDiscardButton is set, i.e. a rack tile can be
     //                          discarded)
     //                      written on touch-down hit, restored to 0 on release.
@@ -245,11 +245,11 @@ public:
     TileIcon statsButtonFrame;
     TileIcon pauseButtonFrame;
     TileIcon discardButtonFrame;
-    TileIcon playerIcon;
+    TileIcon statsIcon;
     TileIcon menuIcon;
-    TileIcon conditionalIcon;         // (UV/pos set by FUN_10000bab8)
+    TileIcon discardIcon;         // (UV/pos set by FUN_10000bab8)
 
-    bool showDiscardButton;             // (gates conditionalIcon + discardButtonFrame draw)
+    bool showDiscardButton;             // (gates discardIcon + discardButtonFrame draw)
 
     // health values driving both the center HP number and the 4 health-bar
     // quads. setHealth (FUN_10000d18c) updates currentHealth and rebuilds

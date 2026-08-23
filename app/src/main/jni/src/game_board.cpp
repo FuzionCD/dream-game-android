@@ -526,13 +526,13 @@ GameBoard* GameBoard::create() {
     }
 
     // --- navigation/button quads (TileIcons 0xD8 each) ---
-    pBoard->navArrowQuad = TileIcon();
-    pBoard->navArrowQuad.quad.setTexCoords(0.083f, 0.0f, 0.181f, 0.098f);
-    pBoard->navArrowQuad.quad.setSize(0.15625f, 0.15625f);
+    pBoard->confirmButton = TileIcon();
+    pBoard->confirmButton.quad.setTexCoords(0.083f, 0.0f, 0.181f, 0.098f);
+    pBoard->confirmButton.quad.setSize(0.15625f, 0.15625f);
 
-    pBoard->backButtonQuad = TileIcon();
-    pBoard->backButtonQuad.quad.setTexCoords(0.0f, 0.0f, 0.082f, 0.193f);
-    pBoard->backButtonQuad.quad.setSize(0.13125f, 0.309375f);
+    pBoard->rotateArrow = TileIcon();
+    pBoard->rotateArrow.quad.setTexCoords(0.0f, 0.0f, 0.082f, 0.193f);
+    pBoard->rotateArrow.quad.setSize(0.13125f, 0.309375f);
 
     pBoard->xButtonQuad = TileIcon();
     pBoard->xButtonQuad.quad.setTexCoords(0.904f, 0.533f, 1.0f, 0.629f);
@@ -646,7 +646,7 @@ GameBoard* GameBoard::create() {
 // every held tile, then runs sub-object destructors in reverse-construction
 // order. C++'s `delete this` runs the embedded-sub-object destructors for us
 // (Quad arrays, Nemesis, DetailPanel, DialogPanel, GameplayHUD, PlayerSystem,
-// StatBars, TileWeightPool/gameplayItems vectors, HexMap std::map,
+// StatBars, TileWeightPool/controlSpots vectors, HexMap std::map,
 // AnimationController vectors), so we only need to handle the raw-pointer
 // fields manually: rack[0..4], the page/decoration/reserve linked-list nodes,
 // and the rack-order list nodes.
@@ -749,6 +749,13 @@ bool GameBoard::shouldDrawTintsFor(TileObject* tile) {
     return findSnagInRack((int)SnagKind::Myopia) == nullptr;
 }
 
+// true when a held control tile marks this cell as a scoring spot and nothing
+// is standing on it, i.e. the cell is showing a range hint that something drawn
+// later could hide.
+static bool showsControlHintAt(const GameBoard& board, int col, int row) {
+    return board.controlTileCellPredicate(col, row) && !board.cellIsOccupied(col, row);
+}
+
 // port of FUN_100018514: full GameBoard render. step labels (8.1..8.22)
 // match the binary's branch order; every sub-system draws with its own
 // visible/empty early-out, so an empty board collapses to a clean no-op.
@@ -767,13 +774,13 @@ void GameBoard::draw() {
 
     bindTexture(9);
 
-    // 8.2 dynamic gameplay items vector (the gameplayItems vector +
-    //     gameplayItemsLiveCount). before any items spawn, liveCount = 0 so the loop is empty.
-    if (gameplayItemsLiveCount > 0 && !gameplayItems.empty()) {
+    // 8.2 dynamic gameplay items vector (the controlSpots vector +
+    //     shownControlSpotsCount). before any items spawn, spotsCount = 0 so the loop is empty.
+    if (shownControlSpotsCount > 0 && !controlSpots.empty()) {
 
-        for (int64_t i = 0; i < gameplayItemsLiveCount &&
-                            i < (int64_t)gameplayItems.size(); ++i) {
-            gameplayItems[(size_t)i].quad.draw();
+        for (int64_t i = 0; i < shownControlSpotsCount &&
+                            i < (int64_t)controlSpots.size(); ++i) {
+            controlSpots[(size_t)i].quad.draw();
         }
     }
 
@@ -955,18 +962,39 @@ void GameBoard::draw() {
     //      nothing is selected: selectedRackSlot = -1, skip.
     if (selectedRackSlot != -1) {
 
+        // a held control tile marks the cells it would score on (drawn back at
+        // step 8.2), and an unconfirmed tile parks these two buttons one cell
+        // either side of itself, so a button can land straight on a marked
+        // cell. fade whichever one does and leave both where they are. no
+        // cells are marked unless a control tile is in hand, so this sits at
+        // full opacity the rest of the time.
+        constexpr uint8_t COVERED_BUTTON_ALPHA = 0x4D;   // 30%
+
+        const TileObject* draft = rack[selectedRackSlot];
+        const bool controlTileHeld = (shownControlSpotsCount > 0) && (draft != nullptr);
+
         // hide nav arrow during back-button rotation drag (state 1) so the
         // rotation gesture isn't visually competing with the directional
         // picker.
         if (navDragState != 1) {
-            navArrowQuad.quad.draw();
+            // this button rests one cell east of the draft tile
+            confirmButton.quad.setAlpha(
+                (controlTileHeld
+                 && showsControlHintAt(*this, draft->gridCol + 1, draft->gridRow))
+                    ? COVERED_BUTTON_ALPHA : 0xFF);
+            confirmButton.quad.draw();
         }
 
         // back button only shows when no rack-snag of kind 0x31 or 0x43
         // is present (= no "Back" suppressor active).
         if (findSnagInRack(0x31) == nullptr &&
             findSnagInRack(0x43) == nullptr) {
-            backButtonQuad.quad.draw();
+            // and this one rests one cell west
+            rotateArrow.quad.setAlpha(
+                (controlTileHeld
+                 && showsControlHintAt(*this, draft->gridCol - 1, draft->gridRow))
+                    ? COVERED_BUTTON_ALPHA : 0xFF);
+            rotateArrow.quad.draw();
         }
     }
 
@@ -5049,7 +5077,9 @@ void GameBoard::unstageDiscardEntryVisual(DiscardEntry& entry) {
     }
 }
 
-// true when at least one rack tile is marked to be discarded.
+// true when at least one staging entry is marked to be trashed on commit.
+// distinguishes a staging session the player actually used from one they
+// opened and closed again.
 static bool anyDiscardStaged(const std::vector<DiscardEntry>& queue) {
 
     for (const DiscardEntry& e : queue) {
@@ -5062,8 +5092,9 @@ static bool anyDiscardStaged(const std::vector<DiscardEntry>& queue) {
     return false;
 }
 
-// scan pendingDiscards; if any tile is staged for discard, switch the
-// conditional icon to confirm, otherwise set it to cancel.
+// reconstructed from Ghidra FUN_100025d48. scan pendingDiscards; if any
+// entry is staged for commit, switch the conditional icon to confirm,
+// else back to staging-active.
 void GameBoard::refreshDiscardConfirmIcon() {
 
     if (anyDiscardStaged(hud.pendingDiscards)) {
@@ -8125,7 +8156,7 @@ bool GameBoard::controlTileCellPredicate(int col, int row) const {
     return absRow == rowQuot * stride && kind == 0;
 }
 
-// FUN_100024678, control-tile range overlay. populates gameplayItems
+// FUN_100024678, control-tile range overlay. populates controlSpots
 // with up to N hint quads at the cells where the held control tile would
 // score, each with alpha by hex distance to the anchor.
 void GameBoard::updateControlTileHints() {
@@ -8143,7 +8174,7 @@ void GameBoard::updateControlTileHints() {
         }
     }
 
-    gameplayItemsLiveCount = 0;
+    shownControlSpotsCount = 0;
 
     // 9x9 hex neighborhood: dCol in [-4, +4], dRow in [-4, +4], skip the
     // anchor itself. binary walks (iVar12, iVar9) = (dCol, dRow) outer/inner.
@@ -8169,15 +8200,15 @@ void GameBoard::updateControlTileHints() {
                 continue;
             }
 
-            // grow gameplayItems if liveCount has caught up to the back.
+            // grow controlSpots if liveCount has caught up to the back.
             // binary uses FUN_100007d78 (Quad ctor) + memcpy / FUN_100027af0
             // (reserve+push) here; std::vector::emplace_back gets the same
             // result: the value-initialized TileIcon's Quad runs its ctor.
-            if ((size_t)gameplayItemsLiveCount >= gameplayItems.size()) {
-                gameplayItems.emplace_back();
+            if ((size_t)shownControlSpotsCount >= controlSpots.size()) {
+                controlSpots.emplace_back();
             }
 
-            TileIcon& hint = gameplayItems[(size_t)gameplayItemsLiveCount];
+            TileIcon& hint = controlSpots[(size_t)shownControlSpotsCount];
 
             // UV (0.443359, 0.524414) to (0.511719, 0.589844) and size
             // (0.109375, 0.104688) match FUN_100024678's inline writes.
@@ -8203,7 +8234,7 @@ void GameBoard::updateControlTileHints() {
             constexpr uint8_t kAlphaByDist[5] = { 0x00, 0xFF, 0x96, 0x64, 0x32 };
             hint.quad.setAlpha(kAlphaByDist[dist]);
 
-            gameplayItemsLiveCount++;
+            shownControlSpotsCount++;
         }
     }
 }
@@ -9381,22 +9412,22 @@ void GameBoard::onPointerReleasedDuringDrag() {
 
             heldTile->setGridCoord(neighborCol, neighborRow);
 
-            // hint-quad positions: navArrowQuad (neighbor east)
-            // and backButtonQuad (neighbor west). only the
-            // backButton's X gets the 0.015625 offset; the Y component
+            // hint-quad positions: confirmButton (neighbor east)
+            // and rotateArrow (neighbor west). only the
+            // confirmButton's X gets the 0.015625 offset; the Y component
             // adds nothing.
             HexCellPos navHint  = hexCellLinearXY(heldTile->gridCol + 1,
                                                   heldTile->gridRow);
-            navArrowQuad.quad.posX = navHint.x;
-            navArrowQuad.quad.posY = navHint.y;
+            confirmButton.quad.posX = navHint.x;
+            confirmButton.quad.posY = navHint.y;
 
             HexCellPos backHint = hexCellLinearXY(heldTile->gridCol - 1,
                                                   heldTile->gridRow);
-            backButtonQuad.quad.posX = backHint.x + HINT_OFFSET;
-            backButtonQuad.quad.posY = backHint.y;
+            rotateArrow.quad.posX = backHint.x + HINT_OFFSET;
+            rotateArrow.quad.posY = backHint.y;
 
-            navArrowQuad.quad.snapToPixelGrid();
-            backButtonQuad.quad.snapToPixelGrid();
+            confirmButton.quad.snapToPixelGrid();
+            rotateArrow.quad.snapToPixelGrid();
 
             // shift held tile from absolute screen pos to board-local pos.
             heldTile->setPosition(heldTile->mainQuad.posX - positionX,
@@ -9474,7 +9505,7 @@ void GameBoard::onPointerReleasedDuringDrag() {
     }
 
     // common cleanup (LAB_10001bc94).
-    gameplayItemsLiveCount = 0;
+    shownControlSpotsCount = 0;
     exitArrowVisible = false;
     draggedRackSlot = -1;
 }
@@ -9777,8 +9808,8 @@ void GameBoard::animateMidGrabHexHighlight(float dt) {
 // rack tile is staged at a hex (selectedRackSlot != -1). navDragState
 // semantics:
 //   -1: idle, waiting for a touch on either the confirm button (=
-//       navArrowQuad, right of placed tile) or the rotate button
-//       (= backButtonQuad, left of placed tile).
+//       confirmButton, right of placed tile) or the rotate button
+//       (= rotateArrow, left of placed tile).
 //    0: confirm button held; on release over the same button, the tile
 //       commits to the page list.
 //    1: rotate button held; continuous rotation of the held tile follows
@@ -9811,19 +9842,19 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
         // hit-test in board-local coords (touch - boardPos).
         float relX = g->touchX() - positionX;
         float relY = g->touchY() - positionY;
-        bool overConfirm = navArrowQuad.quad.contains(relX, relY);
-        bool overRotate  = backButtonQuad.quad.contains(relX, relY);
+        bool overConfirm = confirmButton.quad.contains(relX, relY);
+        bool overRotate  = rotateArrow.quad.contains(relX, relY);
 
         if (overConfirm) {
             navDragState = 0;
-            navArrowQuad.quad.setColor(0xB4, 0xB4, 0xB4, 0xFF);  // dim
+            confirmButton.quad.setColor(0xB4, 0xB4, 0xB4, 0xFF);  // dim
         } else if (overRotate) {
             // rotate gesture is suppressed by rack snag 0x31 or 0x43.
             if (findSnagInRack(0x31) != nullptr) return 0;
             if (findSnagInRack(0x43) != nullptr) return 0;
 
             navDragState = 1;
-            backButtonQuad.quad.setColor(0xB4, 0xB4, 0xB4, 0xFF);
+            rotateArrow.quad.setColor(0xB4, 0xB4, 0xB4, 0xFF);
 
             // anchor seeds for the rotation drag. only fires when
             // selectedRackSlot is valid (which the caller guarantees: the
@@ -9885,17 +9916,17 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
         // apply rotation directly: tile.rotation = anchor + delta(rad to deg)
         held->setRotationDirect(navDragAnchorRotation + deltaAngle * RAD_TO_DEG);
 
-        // hint quad position (backButtonQuad.posX/posY). offset
+        // hint quad position (rotateArrow.posX/posY). offset
         // from the tile center by polarToRect(0.18125, deltaAngle + pi) so
         // the rotate button visually orbits the tile as the player drags.
         HexCellPos hintOffset = polarToRect(HINT_RADIUS, deltaAngle + PI_VAL);
-        backButtonQuad.quad.posX = held->mainQuad.posX + hintOffset.x;
-        backButtonQuad.quad.posY = held->mainQuad.posY + hintOffset.y;
+        rotateArrow.quad.posX = held->mainQuad.posX + hintOffset.x;
+        rotateArrow.quad.posY = held->mainQuad.posY + hintOffset.y;
 
-        // stash the angle delta (degrees) in backButtonQuad.quad.rotation.
+        // stash the angle delta (degrees) in rotateArrow.quad.rotation.
         // reusing the rotation slot also drives the button's visible spin
         // around the tile during the drag.
-        backButtonQuad.quad.rotation = deltaAngle * RAD_TO_DEG;
+        rotateArrow.quad.rotation = deltaAngle * RAD_TO_DEG;
 
         navDragDuration += dt;
         return 0;
@@ -9906,7 +9937,7 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
     // rotate button release: pick between "snap rotation to closest fit" and
     // "advance to next-allowed dir in dirList".
     if (navDragState == 1) {
-        backButtonQuad.quad.setColor(0xFF, 0xFF, 0xFF, 0xFF);  // restore white
+        rotateArrow.quad.setColor(0xFF, 0xFF, 0xFF, 0xFF);  // restore white
         navDragState = -1;
 
         TileObject* held = (selectedRackSlot >= 0 &&
@@ -9915,7 +9946,7 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
                            : nullptr;
 
         if (held) {
-            float angleDelta = backButtonQuad.quad.rotation;
+            float angleDelta = rotateArrow.quad.rotation;
 
             bool bigDrag = (navDragDuration >= DRAG_DURATION_THRESHOLD) ||
                            (angularDistance(angleDelta, 0.0f) >= DRAG_ANGLE_THRESHOLD);
@@ -9951,11 +9982,11 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
             // (just left of the tile, no Y offset). only the X axis gets
             // the polar offset; Y stays equal to the tile's posY.
             HexCellPos restOffset = polarToRect(HINT_RADIUS, PI_VAL);
-            backButtonQuad.quad.posX = held->mainQuad.posX + restOffset.x;
-            backButtonQuad.quad.posY = held->mainQuad.posY;
+            rotateArrow.quad.posX = held->mainQuad.posX + restOffset.x;
+            rotateArrow.quad.posY = held->mainQuad.posY;
 
-            backButtonQuad.quad.rotation = 0.0f;
-            backButtonQuad.quad.snapToPixelGrid();
+            rotateArrow.quad.rotation = 0.0f;
+            rotateArrow.quad.snapToPixelGrid();
         }
 
         g->soundQueue.trigger(7);  // buttonCancel
@@ -9967,7 +9998,7 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
     }
 
     // ---- confirm button release: commit the tile to the page list ----
-    navArrowQuad.quad.setColor(0xFF, 0xFF, 0xFF, 0xFF);
+    confirmButton.quad.setColor(0xFF, 0xFF, 0xFF, 0xFF);
     navDragState = -1;
 
     // hit-test: did the release land on the confirm button? in board-local
@@ -9976,7 +10007,7 @@ int GameBoard::updateNavArrowAndConfirmDrag(float dt) {
         float relX = g->touchX() - positionX;
         float relY = g->touchY() - positionY;
 
-        if (!navArrowQuad.quad.contains(relX, relY)) {
+        if (!confirmButton.quad.contains(relX, relY)) {
             g->soundQueue.trigger(7);  // buttonCancel, released off the button
             return 0;
         }
@@ -11388,8 +11419,9 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
     case 6: {
         // hex-pickup commit. player has tapped a placed tile.
 
-        // check discard queue before it's emptied
-        bool nothingStaged = !anyDiscardStaged(hud.pendingDiscards);
+        // sampled up here because the dispatch below is what empties the queue
+        const bool nothingStaged = !anyDiscardStaged(hud.pendingDiscards);
+
         bool dispatched = dispatchHexAndRackTouch(dt, touchInput);
 
         if (!dispatched) {
@@ -11401,9 +11433,9 @@ void GameBoard::tickInGameStateMachine(float dt, float touchInput) {
             break;  // still resolving staged discards -> stay in 6
         }
 
-        // don't process end of turn stuff like snag movement and nemesis eating
-        // tiles if the player didn't actually discard anything (relevant to both
-        // the discard button and certain events)
+        // a staging session closed without trashing anything costs the player
+        // nothing, so it skips post-resolve, which would spend the turn's snag
+        // march. covers both the discard tray and an Event's tile picker.
         if (nothingStaged) {
             newState = 1;
             writeNewState = true;
@@ -12700,10 +12732,10 @@ void GameBoard::initLevelContent() {
     // abandons every in-flight burst without freeing the nodes.
     clearActionQueue();
 
-    // 7.19 reset the gameplay-items vector live-count (gameplayItemsLiveCount). draw 8.2
-    // (GameBoard::draw) walks gameplayItems[0..gameplayItemsLiveCount) each
+    // 7.19 reset the gameplay-items vector live-count (shownControlSpotsCount). draw 8.2
+    // (GameBoard::draw) walks controlSpots[0..shownControlSpotsCount) each
     // frame; the vector itself keeps its allocation.
-    gameplayItemsLiveCount = 0;
+    shownControlSpotsCount = 0;
 
     // 7.20 free entire tile reserve queue. binary deletes each held tile
     // then clears the list. at level start the reserve is already empty,
@@ -12851,7 +12883,7 @@ void GameBoard::initLevelContent() {
     hud.showDiscardButton = false;
 
     // 7.29 HUD post-tile positioning (port of FUN_10000bab8). configures
-    // the conditionalIcon with its standard UV / size / pos.
+    // the discardIcon with its standard UV / size / pos.
     hud.setDiscardIcon(GameplayHUD::DiscardIconState::Default);
 
     // 7.30 X-button refresh (port of FUN_100017c04). resets visible / pressed
@@ -14385,8 +14417,8 @@ void GameBoard::restoreFromSnapshot(const GameSnapshot& snap,
 
     this->discardSlide.clear();
 
-    // GameBoard.gameplayItemsLiveCount = gameplayItemsLiveCount = 0
-    this->gameplayItemsLiveCount = 0;
+    // GameBoard.shownControlSpotsCount = shownControlSpotsCount = 0
+    this->shownControlSpotsCount = 0;
 
     // ---- 15b. reserve queue cleanup (GameBoard.tileReserve) ----
     //

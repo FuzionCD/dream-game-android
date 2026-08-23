@@ -36,14 +36,14 @@ public:
 
     // FUN_100057424. shared chrome setup. titleAtlasX/Y/W/H are the atlas-pixel
     // coordinates of the per-subclass title bar (e.g. (641, 906, 251, 48) for
-    // MenuLevel). bgDim, frame9slice, closeBg, confirmButton get their fixed
+    // MenuLevel). bgDim, frame9slice, closeBg, rotateArrow get their fixed
     // setup; titleQuad's UV/size derive from the caller's args.
     void init(int titleAtlasX, int titleAtlasY, int titleAtlasW, int titleAtlasH);
 
     // FUN_100057878. base chrome draw; subclasses call this then draw their
     // own slot content. binds tex 0 for bgDim, then under a glPushMatrix
     // translated by (anchorX, anchorY), draws frame9slice + titleQuad + (when
-    // showConfirm is set) closeBg + confirmButton.
+    // showConfirm is set) closeBg + rotateArrow.
     void draw();
 
     // FUN_1000578f8. shared per-frame logic: drives the cosine-eased fade
@@ -74,7 +74,7 @@ public:
     void setSizeAndCenterY(float panelWidth, float panelHeight);
 
     // FUN_100057ac8. visible flag set, fade timer reset, showConfirm cleared,
-    // confirmButton restored to full white, sound 8 fires.
+    // rotateArrow restored to full white, sound 8 fires.
     void panelShow();
 
     // FUN_100057b1c. `justClearVisible` mirrors the binary's two-arg variants:
@@ -124,11 +124,11 @@ public:
     // (x, y, w, h) atlas-pixel literals via the pixel-rect helper.
     Quad         titleQuad;
 
-    // closeBg Quad, round backdrop behind confirmButton. drawn only
+    // closeBg Quad, round backdrop behind rotateArrow. drawn only
     // when showConfirm is set.
     Quad         closeBg;
 
-    // confirmButton Quad. hit-tested by baseUpdate against
+    // rotateArrow Quad. hit-tested by baseUpdate against
     // touch coords when showConfirm is set.
     Quad         confirmButton;
 

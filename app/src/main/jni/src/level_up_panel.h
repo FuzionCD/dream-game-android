@@ -49,7 +49,7 @@ class PlayerSystem;
 //
 // the panel inherits from Menu (menu.h), the binary's shared base class
 // providing the 0x420-byte chrome header (bgDim, frame9slice, titleQuad,
-// closeBg, confirmButton + fade-state). subclass content (stat/perk slots,
+// closeBg, rotateArrow + fade-state). subclass content (stat/perk slots,
 // picks lists, etc.) follows the header.
 
 // ---- per-slot layout structs ----
@@ -153,7 +153,7 @@ public:
     //
     // Menu base class owns the panel chrome: vtable +
     // visible, anchorX/Y, fade state, bgDim Quad, frame9slice Label,
-    // titleQuad Quad, closeBg Quad, confirmButton Quad, showConfirm,
+    // titleQuad Quad, closeBg Quad, rotateArrow Quad, showConfirm,
     // confirmPressed. see menu.h for full layout.
 
     // ---- stat slots ----

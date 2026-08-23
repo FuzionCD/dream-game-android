@@ -1007,7 +1007,7 @@ void ItemChoicePanel::setSlotSelected(int slotIdx, bool selected) {
 // ItemChoicePanel::setAlpha, FUN_1000356c0, vtable[4].
 //
 // Menu::setAlpha first (chrome: bgDim half-alpha + frame9slice / title /
-// closeBg / confirmButton), then per active slot propagate alpha onto:
+// closeBg / rotateArrow), then per active slot propagate alpha onto:
 //   heldItem (Item::setAlpha = FUN_1000333a8; every sub-Quad + tint)
 //   heldLabel (Label::setAlpha = FUN_10004c84c)
 //   heldDividerQuad (Quad::setAlpha = FUN_100008388)

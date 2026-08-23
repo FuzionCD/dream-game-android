@@ -649,7 +649,7 @@ void EventChoicePanel::close() {
 // FUN_10000f6a0, EventChoicePanel::setAlpha.
 //
 // Menu::setAlpha first (chrome: bgDim half-alpha + title / closeBg /
-// confirmButton), then per active slot propagate alpha onto:
+// rotateArrow), then per active slot propagate alpha onto:
 //   labelDefault (Label::setAlpha)
 //   labelSelected (Label::setAlpha)
 //   EventSlot::setAlpha (mainQuad + eventFrame + chargeSlots + chargeMarkers)
