@@ -8,8 +8,8 @@ android {
         applicationId "com.fireflame.dream"
         minSdk 21
         targetSdk 36
-        versionCode 101
-        versionName "1.0.1"
+        versionCode 102
+        versionName "1.0.2"
 
         ndk {
             // arm64-v8a    every 64-bit phone from ~2015 on, the bulk of installs
