@@ -2991,6 +2991,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
         case EventKind::SkeletonKey: {
             // case 2: "Double all held {A} tile values."
+            snapTileBackToRack();
             bool any = false;
 
             for (int i = 0; i < 5; ++i) {
@@ -3001,7 +3002,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
                 TileContent* tc = tile->getTileContentIfAlive();
                 int          m  = tile->getContentMagnitude();
-                tc->setMagnitude(m * 2);
+                tc->setRawAndDisplayMagnitude(m * 2);
 
                 float origin[2] = { 0.0f, 0.0f };
                 pushAction(0, origin, tile);
@@ -3013,6 +3014,8 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
         case EventKind::HardenedShell: {
             // case 3: "Double all held {D} tile values."
+            // same raw-magnitude fix and unstage as SkeletonKey.
+            snapTileBackToRack();
             bool any = false;
 
             for (int i = 0; i < 5; ++i) {
@@ -3023,7 +3026,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
                 TileContent* tc = tile->getTileContentIfAlive();
                 int          m  = tile->getContentMagnitude();
-                tc->setMagnitude(m * 2);
+                tc->setRawAndDisplayMagnitude(m * 2);
 
                 float origin[2] = { 0.0f, 0.0f };
                 pushAction(0, origin, tile);
@@ -3618,6 +3621,9 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
             if (snagCount < 2) return false;
             if (defCount  < 1) return false;
 
+            // same raw-magnitude fix and unstage as SkeletonKey.
+            snapTileBackToRack();
+
             for (int i = 0; i < 5; ++i) {
                 TileObject* tile = rack[i];
 
@@ -3627,7 +3633,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
                 int m = tile->getContentMagnitude();
                 pushStatTween(1, m * (snagCount - 1), &tile->mainQuad.posX, 0);
                 TileContent* tc = tile->getTileContentIfAlive();
-                tc->setMagnitude(m * snagCount);
+                tc->setRawAndDisplayMagnitude(m * snagCount);
             }
             return true;
         }
@@ -3729,7 +3735,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
                 int m = tile->getContentMagnitude();
                 pushStatTween(1, m, &tile->mainQuad.posX, 0);
                 TileContent* tc = tile->getTileContentIfAlive();
-                tc->setMagnitude(m * 2);
+                tc->setRawAndDisplayMagnitude(m * 2);
                 any = true;
             }
             return any;
@@ -3923,7 +3929,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
             if (firstAtk != nullptr) {
                 TileContent* tc = firstAtk->getTileContentIfAlive();
                 int          m  = firstAtk->getContentMagnitude();
-                tc->setMagnitude(m + magSum);
+                tc->setRawAndDisplayMagnitude(m + magSum);
                 pushStatTween(1, magSum, &firstAtk->mainQuad.posX, 0);
             }
             refillRackPostCommit();
@@ -4393,7 +4399,7 @@ bool GameBoard::fireEvent(EventSlot* slot, float dt, float anchorX, float anchor
 
             if (drawn) {
                 TileContent* tc = drawn->getTileContentIfAlive();
-                if (tc) tc->setMagnitude(exitSum);
+                if (tc) tc->setRawAndDisplayMagnitude(exitSum);
             }
             refillRackPostCommit();
             return true;
@@ -10946,7 +10952,7 @@ void GameBoard::applyHexPickupConsumeEffect(float /*dt*/) {
             {
                 TileContent* tc = tappedTile->getTileContentIfAlive();
                 int          m  = tappedTile->getContentMagnitude();
-                tc->setMagnitude(m * 2);
+                tc->setRawAndDisplayMagnitude(m * 2);
             }
             dispatched = true;
             break;
